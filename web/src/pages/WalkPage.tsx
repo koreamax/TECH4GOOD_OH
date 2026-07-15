@@ -247,36 +247,86 @@ export default function WalkPage() {
         </div>
       )}
 
-      {/* 장애물 감지 → 알림 카드 (S-11) */}
-      {pendingAlertIndex != null && detailIndex == null && !intro && (
-        <button
-          onClick={() => {
-            setDetailIndex(pendingAlertIndex);
-            useWalkStore.getState().clearAlert();
-          }}
-          className="card"
+      {/* 장애물 감지 → 알림: 하단 다크 토스트 + 플로팅 버튼 (S-11, 시안 원본) */}
+      {!intro && (
+        <div
           style={{
             position: 'absolute',
-            top: 68,
-            left: 16,
-            right: 16,
+            left: 20,
+            right: 20,
+            bottom: 176,
             zIndex: 20,
             display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: 14,
-            textAlign: 'left',
-            boxShadow: '0 6px 20px rgba(0,0,0,.18)',
+            alignItems: 'flex-end',
+            justifyContent: 'flex-end',
+            gap: 8,
           }}
         >
-          <span style={{ fontSize: 26 }}>⚠️</span>
-          <span>
-            <b style={{ display: 'block', fontSize: 15 }}>위험 요소를 발견했어요!</b>
-            <span style={{ fontSize: 13, color: 'var(--subtext)' }}>
-              {CLASS_KR[detections[pendingAlertIndex]?.className] ?? ''} 의심 · 눌러서 확인하기
-            </span>
-          </span>
-        </button>
+          {pendingAlertIndex != null && detailIndex == null && (
+            <button
+              onClick={() => {
+                setDetailIndex(pendingAlertIndex);
+                useWalkStore.getState().clearAlert();
+              }}
+              style={{
+                flex: 1,
+                background: '#11181d',
+                borderRadius: 12,
+                padding: 16,
+                textAlign: 'left',
+              }}
+            >
+              <p style={{ color: '#fd7565', fontSize: 16, fontWeight: 600, lineHeight: 1.4 }}>
+                장애물 감지 경고 발동!
+              </p>
+              <p
+                style={{
+                  color: '#9aa7b2',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  lineHeight: 1.4,
+                  letterSpacing: '-0.24px',
+                  marginTop: 4,
+                }}
+              >
+                앞쪽에 보행 장애물이 감지되었어요. 확인 후 위험 요소가 맞다면 동네 안전
+                데이터로 공유해주세요.
+              </p>
+            </button>
+          )}
+          <button
+            aria-label={CLASS_KR[detections[pendingAlertIndex ?? -1]?.className] ?? '감지 알림'}
+            onClick={() => {
+              if (pendingAlertIndex != null) {
+                setDetailIndex(pendingAlertIndex);
+                useWalkStore.getState().clearAlert();
+              }
+            }}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 999,
+              background: '#fff',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: pendingAlertIndex != null ? '1px solid #fd7565' : '1px solid #e8e8e8',
+              boxShadow:
+                pendingAlertIndex != null
+                  ? '0 4px 10px rgba(253,117,101,.5)'
+                  : '0 4px 10px rgba(0,0,0,.12)',
+            }}
+          >
+            <img
+              src="/assets/notice-red.svg"
+              alt=""
+              width={30}
+              height={30}
+              style={pendingAlertIndex == null ? { filter: 'grayscale(1) opacity(.45)' } : undefined}
+            />
+          </button>
+        </div>
       )}
 
       {/* 하단 통계 + 종료 */}

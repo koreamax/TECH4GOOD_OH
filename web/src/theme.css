@@ -1,15 +1,18 @@
-/* 피그마 시안(@ayeohynn) 디자인 토큰 — docs/SCREENS.md */
+/* 피그마 시안(@ayeohynn) 디자인 토큰 — Dev Mode 추출 원본값 (임의 변경 금지) */
 :root {
-  --primary: #5fc98e;
-  --primary-dark: #3fae73;
-  --primary-light: #e7f7ee;
-  --ink: #1a1a1a;
-  --text: #222;
-  --subtext: #8e8e93;
-  --accent: #ff6b4a;
-  --accent-light: #fff1ec;
-  --danger: #ff4d4d;
-  --border: #efefef;
+  --primary: #41d596; /* Green Primary */
+  --primary-dark: #2fae79;
+  --primary-light: #e7f9f1;
+  --ink: #11181d; /* Gray 800 */
+  --text: #11181d;
+  --subtext: #9aa7b2; /* Gray 400 */
+  --accent: #fd7565; /* Red */
+  --accent-light: #fff1ef;
+  --route: #407fff; /* Blue */
+  --danger: #fd7565;
+  --gray600: #4b5863;
+  --gray500: #6e7c89;
+  --border: #e3e8ec; /* Gray 200 */
   --dim: rgba(0, 0, 0, 0.45);
 }
 
@@ -26,11 +29,13 @@ body,
 }
 
 body {
+  /* 시안 서체 = Pretendard (index.html 에서 로드) */
   font-family:
-    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR',
-    sans-serif;
+    'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   background: #ececec;
   color: var(--text);
+  letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -64,11 +69,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   width: 100%;
-  padding: 15px;
-  border-radius: 14px;
+  padding: 14px 10px;
+  border-radius: 8px; /* 시안 버튼 라운드 */
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   color: #fff;
   background: var(--primary);
 }
@@ -82,11 +88,14 @@ button {
 .btn.danger {
   background: var(--danger);
 }
+.btn.accent {
+  background: var(--accent);
+}
 
 .card {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px; /* 시안 카드 라운드 */
 }
 
 .chip {
@@ -113,34 +122,37 @@ button {
   font-size: 14px;
 }
 
-/* 다크 캡슐 토글 */
+/* 다크 세그먼트 토글 — 시안: #11181D 컨테이너 r8, 선택 탭 = 그린 배경 + 다크 텍스트 */
 .segment-pill {
   display: inline-flex;
   background: var(--ink);
-  border-radius: 999px;
-  padding: 4px;
+  border-radius: 8px;
+  width: 200px;
 }
 .segment-pill button {
-  padding: 8px 16px;
-  border-radius: 999px;
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
   color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.28px;
 }
 .segment-pill button.active {
   background: var(--primary);
+  color: var(--ink);
 }
 
-/* 하단 탭바 */
+/* 하단 탭바 — 시안: 흰 배경, 위쪽 그림자, 아이콘 24px, 라벨 Medium 12 */
 .tabbar {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   display: flex;
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid var(--border);
-  padding: 8px 0 max(10px, env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+  padding: 10px 4px max(10px, env(safe-area-inset-bottom));
   z-index: 50;
 }
 .tabbar a {
@@ -148,18 +160,23 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  font-size: 11px;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.24px;
   color: var(--subtext);
   text-decoration: none;
 }
 .tabbar a.active {
   color: var(--ink);
-  font-weight: 700;
 }
+/* 시안 SVG 아이콘을 mask 로 그려 활성/비활성 색만 바꾼다 */
 .tabbar .icon {
-  font-size: 20px;
-  line-height: 1;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: var(--icon) no-repeat center / contain;
+  -webkit-mask: var(--icon) no-repeat center / contain;
 }
 
 /* Naver 지도가 탭바/모달 아래 깔리도록 */
