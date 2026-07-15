@@ -190,6 +190,27 @@ GEMINI_API_KEY 미설정·호출 실패 시 템플릿 문안으로 폴백(플로
 `box` 는 0~1 정규화 xyxy. 서버 env `MODEL_PATH` 미설정·ultralytics 미설치면
 `{"model": "absent", "reason": "...", "detections": []}` — 프론트는 목 탐지 모드로 동작.
 
+### POST /infer/video — 영상 업로드 → 시각별 탐지 타임라인 (웹 데모 주력 경로)
+
+요청 (multipart): `video`(mp4), `duration`(초, 목 타임라인용), `conf`(0.35), `sample_fps`(2.0).
+
+응답 200:
+
+```json
+{
+  "model": "absent",
+  "duration": 14.0,
+  "detections": [
+    { "t": 4.0, "class_name": "sidewalk_damaged", "confidence": 0.68,
+      "box": { "x1": 0.53, "y1": 0.49, "x2": 0.77, "y2": 0.69 } }
+  ]
+}
+```
+
+`t` 는 영상 내 시각(초). `MODEL_PATH` 있으면 opencv 프레임 샘플링 + 실제 YOLO(`model:"loaded"`),
+없으면 `duration` 기반 결정적 목 타임라인(`model:"absent"`). 프론트는 영상 재생 시각에
+맞춰 이 타임라인을 "실시간 탐지처럼" 트리거한다.
+
 ---
 
 ## 8. 기타

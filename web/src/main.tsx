@@ -1,4 +1,3 @@
-import 'leaflet/dist/leaflet.css';
 import './theme.css';
 
 import React from 'react';

@@ -1,10 +1,10 @@
-import L from 'leaflet';
-import { useEffect, useState } from 'react';
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { useEffect, useRef, useState } from 'react';
 
 import { getMarkers } from '../api';
 import { CLASS_KR } from '../config';
 import { SEOUL } from '../geo';
+import MapFallback from '../naver/MapFallback';
+import { useNaverMaps } from '../naver/useNaverMaps';
 import type { MapMarkerData } from '../types';
 
 const LEVEL_COLORS: Record<MapMarkerData['level'], string> = {
@@ -14,44 +14,66 @@ const LEVEL_COLORS: Record<MapMarkerData['level'], string> = {
   red: '#FF4D4D',
 };
 
-function clusterIcon(m: MapMarkerData) {
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:30px;height:30px;border-radius:50%;background:${LEVEL_COLORS[m.level]};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)">${m.detection_count}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
+function markerContent(m: MapMarkerData): string {
+  return `<div style="width:30px;height:30px;border-radius:50%;background:${LEVEL_COLORS[m.level]};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)">${m.detection_count}</div>`;
 }
 
-/** 산책 지도 탭 (S-02) — 동네 위험 마커 (신뢰도 점수별 색상) */
+/** 산책 지도 탭 (S-02) — 동네 위험 마커 (신뢰도 점수별 색상), Naver Maps */
 export default function MapPage() {
+  const mapState = useNaverMaps();
+  const elRef = useRef<HTMLDivElement>(null);
   const [markers, setMarkers] = useState<MapMarkerData[]>([]);
 
   useEffect(() => {
     getMarkers().then(setMarkers).catch(() => undefined);
   }, []);
 
-  const center: [number, number] = markers.length > 0 ? [markers[0].lat, markers[0].lng] : SEOUL;
+  useEffect(() => {
+    if (mapState !== 'ready' || !elRef.current || !window.naver?.maps) return;
+    const n = window.naver.maps;
+    const center = markers.length > 0 ? [markers[0].lat, markers[0].lng] : SEOUL;
+    const map = new n.Map(elRef.current, {
+      center: new n.LatLng(center[0], center[1]),
+      zoom: 15,
+      logoControl: false,
+      mapDataControl: false,
+      scaleControl: false,
+    });
+
+    const info = new n.InfoWindow({ content: '', borderWidth: 0, disableAnchor: true });
+    const objs: naver.maps.Marker[] = [];
+    markers.forEach((m) => {
+      const marker = new n.Marker({
+        position: new n.LatLng(m.lat, m.lng),
+        map,
+        icon: { content: markerContent(m), anchor: new n.Point(15, 15) },
+      });
+      n.Event.addListener(marker, 'click', () => {
+        info.setContent(
+          `<div style="padding:10px 12px;font-size:12px;line-height:1.5;min-width:150px">
+             <b>${CLASS_KR[m.class_name] ?? m.class_name}</b><br/>
+             신뢰도 점수 ${m.score} · 관측 ${m.detection_count}회 · 승인 ${m.confirmed_count}회<br/>
+             <span style="color:#888">최근 관측 ${m.last_seen.slice(0, 10)}</span>
+           </div>`,
+        );
+        info.open(map, marker);
+      });
+      objs.push(marker);
+    });
+
+    return () => {
+      objs.forEach((o) => o.setMap(null));
+      map.destroy();
+    };
+  }, [mapState, markers]);
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      <MapContainer center={center} zoom={15} style={{ height: '100%' }}>
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-        />
-        {markers.map((m) => (
-          <Marker key={m.cluster_id} position={[m.lat, m.lng]} icon={clusterIcon(m)}>
-            <Popup>
-              <b>{CLASS_KR[m.class_name] ?? m.class_name}</b>
-              <br />
-              신뢰도 점수 {m.score} · 관측 {m.detection_count}회 · 승인 {m.confirmed_count}회
-              <br />
-              <small>최근 관측 {m.last_seen.slice(0, 10)}</small>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
+      {mapState === 'ready' ? (
+        <div ref={elRef} style={{ height: '100%' }} />
+      ) : (
+        <MapFallback state={mapState} />
+      )}
 
       <div
         className="card"

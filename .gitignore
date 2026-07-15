@@ -24,6 +24,9 @@ server/media/
 server/*.db
 server/*.sqlite3
 
+# --- 자체 서명 인증서 (로컬 생성물) ---
+server/certs/
+
 # --- 모델 바이너리 (용량 문제로 미추적, ml/README.md 참고) ---
 app/assets/models/*.tflite
 *.pt
@@ -34,9 +37,10 @@ app/assets/models/*.tflite
 .env.*
 !.env.example
 
-# --- OS / 에디터 ---
+# --- OS / 에디터 / 로컬 툴링 ---
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+.claude/
 *.log

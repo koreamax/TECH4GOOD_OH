@@ -162,8 +162,9 @@ button {
   line-height: 1;
 }
 
-/* leaflet 지도가 탭바/모달 아래 깔리도록 */
-.leaflet-container {
+/* Naver 지도가 탭바/모달 아래 깔리도록 */
+.naver-map,
+[id^='__naver_maps'] {
   z-index: 0;
 }
 

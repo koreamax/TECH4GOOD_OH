@@ -90,3 +90,18 @@ export interface InferResult {
     box: { x1: number; y1: number; x2: number; y2: number };
   }[];
 }
+
+/** 영상 업로드 추론 결과 — 시각(t)별 탐지 타임라인 */
+export interface VideoTimelineItem {
+  t: number; // 영상 내 시각(초)
+  class_name: string;
+  confidence: number;
+  box: { x1: number; y1: number; x2: number; y2: number };
+}
+
+export interface VideoInferResult {
+  model: 'loaded' | 'absent';
+  reason?: string;
+  duration: number;
+  detections: VideoTimelineItem[];
+}

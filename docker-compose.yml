@@ -1,0 +1,23 @@
+# 백엔드(FastAPI) Docker 구동 — 자체 서명 인증서로 HTTPS.
+# 사전 준비: cd server && sh scripts/gen-cert.sh   → server/certs/{cert,key}.pem 생성
+# 실행: docker compose up --build   → https://localhost:8443
+#
+# 키/DB/모델은 .env 또는 셸 환경변수로 주입(없으면 전부 폴백 동작).
+services:
+  api:
+    build: ./server
+    ports:
+      - "8443:8000"          # host 8443(HTTPS) → container 8000
+    environment:
+      PORT: "8000"
+      SSL_CERTFILE: /srv/certs/cert.pem
+      SSL_KEYFILE: /srv/certs/key.pem
+      DATABASE_URL: "${DATABASE_URL:-}"       # Supabase PostgreSQL URI (없으면 SQLite)
+      MODEL_PATH: "${MODEL_PATH:-}"           # 예: /srv/models/best.pt (없으면 목 타임라인)
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"   # 없으면 템플릿 문안
+      KAKAO_REST_API_KEY: "${KAKAO_REST_API_KEY:-}"
+    volumes:
+      - ./server/certs:/srv/certs:ro          # 인증서 마운트(이미지에 굽지 않음)
+      - ./server/media:/srv/media             # 업로드 이미지 영속화
+      - ./server/models:/srv/models           # best.pt 배치 위치
+    restart: unless-stopped

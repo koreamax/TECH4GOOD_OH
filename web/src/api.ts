@@ -5,6 +5,7 @@ import type {
   MapMarkerData,
   Report,
   RoutePoint,
+  VideoInferResult,
   Walk,
   WalkDetail,
 } from './types';
@@ -28,6 +29,15 @@ export async function inferFrame(imageBlob: Blob): Promise<InferResult> {
   const form = new FormData();
   form.append('image', imageBlob, 'frame.jpg');
   return json(await fetch(`${API_URL}/infer`, { method: 'POST', body: form }));
+}
+
+/** 영상 업로드 → 시각별 탐지 타임라인. 서버가 (모델 있으면) 실제 YOLO,
+ *  없으면 목 타임라인을 돌려주므로 프론트는 동일하게 "실시간 탐지처럼" 재생한다. */
+export async function inferVideo(video: Blob, durationSec: number): Promise<VideoInferResult> {
+  const form = new FormData();
+  form.append('video', video, 'walk.mp4');
+  form.append('duration', String(durationSec));
+  return json(await fetch(`${API_URL}/infer/video`, { method: 'POST', body: form }));
 }
 
 // ===== 탐지 =====

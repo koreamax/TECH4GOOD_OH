@@ -9,6 +9,12 @@ export const USE_SERVER_INFER: boolean =
 // 서버 추론 시 프레임 전송 주기
 export const INFER_INTERVAL_MS = 1500;
 
+// 산책 화면에 재생할 데모 영상 (public/ 하위). 실제 촬영본으로 교체 가능.
+export const DEMO_VIDEO: string = import.meta.env.VITE_DEMO_VIDEO ?? '/demo-walk.mp4';
+
+// Naver 지도 Client ID (NCP). 없으면 지도 자리에 폴백 UI 표시.
+export const NAVER_MAP_CLIENT_ID: string = import.meta.env.VITE_NAVER_MAP_CLIENT_ID ?? '';
+
 // 선(先) 승인 게이트: 이 값 이상일 때만 알람. 미만은 알람 없이 서버에만 축적.
 export const ALERT_CONFIDENCE_THRESHOLD = 0.6;
 
