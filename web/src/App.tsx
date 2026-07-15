@@ -12,7 +12,7 @@ import WalkPage from './pages/WalkPage';
 
 export default function App() {
   const { pathname } = useLocation();
-  const hideTabs = pathname.startsWith('/walk') || pathname.startsWith('/summary');
+  const hideTabs = pathname.startsWith('/walk'); // 산책 종료(/summary)는 시안대로 탭바 노출
 
   return (
     <div className="frame">

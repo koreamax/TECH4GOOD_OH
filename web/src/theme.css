@@ -203,9 +203,9 @@ button {
   padding: 20px;
 }
 .grabber {
-  width: 44px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--border);
+  width: 48px;
+  height: 4px;
+  border-radius: 99px;
+  background: #cbd5dc; /* Gray 300 */
   margin: 0 auto 14px;
 }
