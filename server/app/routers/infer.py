@@ -24,6 +24,14 @@ _MOCK_FIRST_T = 4.0          # 첫 탐지 시각(초)
 _MOCK_GAP = 7.0              # 탐지 간 평균 간격(초)
 _DAMAGED = ["sidewalk_damaged", "braille_damaged"]
 
+# v3 모델은 클래스명이 damaged_sidewalk/damaged_braille 순서 — 코드 전반의
+# 표준 명칭(sidewalk_damaged/braille_damaged)으로 정규화한다.
+_NAME_MAP = {"damaged_sidewalk": "sidewalk_damaged", "damaged_braille": "braille_damaged"}
+
+
+def _norm(name: str) -> str:
+    return _NAME_MAP.get(name, name)
+
 
 def _load():
     global _model, _model_error
@@ -59,7 +67,7 @@ def infer(image: UploadFile = File(...), conf: float = 0.35):
             x1, y1, x2, y2 = (float(v) for v in box.xyxyn[0])
             detections.append(
                 {
-                    "class_name": result.names[cls_id],
+                    "class_name": _norm(result.names[cls_id]),
                     "confidence": round(float(box.conf[0]), 3),
                     "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},  # 0~1 정규화
                 }
@@ -101,8 +109,78 @@ def _mock_timeline(seed: bytes, duration: float) -> list[dict]:
     return out
 
 
-def _video_timeline(data: bytes, conf: float, sample_fps: float) -> tuple[float, list[dict]]:
-    """모델이 있을 때: 영상 프레임을 샘플링해 실제 YOLO 추론 → 타임라인."""
+def _mask_polygon(result, idx: int, max_points: int = 60) -> list[list[float]] | None:
+    """seg 모델의 idx번째 인스턴스 마스크를 정규화 폴리곤(점 수 상한)으로."""
+    masks = getattr(result, "masks", None)
+    if masks is None:
+        return None
+    try:
+        xyn = masks.xyn[idx]  # (N, 2) 정규화 폴리곤 좌표
+    except (IndexError, TypeError):
+        return None
+    pts = xyn.tolist() if hasattr(xyn, "tolist") else list(xyn)
+    if not pts:
+        return None
+    if len(pts) > max_points:  # 페이로드·드로잉 비용 억제
+        stride = len(pts) / max_points
+        pts = [pts[int(k * stride)] for k in range(max_points)]
+    return [[round(float(px), 4), round(float(py), 4)] for px, py in pts]
+
+
+def _best_damaged(result, t: float) -> dict | None:
+    """한 프레임에서 신뢰도 최고의 파손 탐지 1건을 박스+마스크로."""
+    if result.boxes is None:
+        return None
+    best_i, best_c, best_name, best_box = -1, -1.0, "", None
+    for i, box in enumerate(result.boxes):
+        name = _norm(result.names[int(box.cls[0])])
+        c = float(box.conf[0])
+        if name in _DAMAGED and c > best_c:
+            x1, y1, x2, y2 = (float(v) for v in box.xyxyn[0])
+            best_i, best_c, best_name, best_box = i, c, name, {
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            }
+    if best_i < 0:
+        return None
+    item = {"t": round(t, 2), "class_name": best_name, "confidence": round(best_c, 3), "box": best_box}
+    mask = _mask_polygon(result, best_i)
+    if mask is not None:
+        item["mask"] = mask
+    return item
+
+
+def _peak_detections(overlay: list[dict], cooldown: float = 15.0) -> list[dict]:
+    """밀집 overlay에서 쿨다운 창별 '최고 신뢰도' 프레임만 남긴 알람 타임라인.
+
+    이전엔 창 내 '첫' 탐지를 방출해 강한 프레임(예: 0.79)이 눌렸으나,
+    이제 창 내 피크를 뽑아 실제로 가장 확실한 순간이 승인 게이트를 띄운다.
+    """
+    ov = sorted(overlay, key=lambda d: d["t"])
+    peaks: list[dict] = []
+    i, n = 0, len(ov)
+    while i < n:
+        start = ov[i]["t"]
+        best = ov[i]
+        j = i
+        while j < n and ov[j]["t"] < start + cooldown:
+            if ov[j]["confidence"] > best["confidence"]:
+                best = ov[j]
+            j += 1
+        peaks.append(best)
+        i = j
+    return peaks
+
+
+def _video_timeline(
+    data: bytes, conf: float, sample_fps: float
+) -> tuple[float, list[dict], list[dict]]:
+    """모델이 있을 때: 프레임 샘플링 → 실제 YOLO 추론.
+
+    반환: (영상 길이, detections, overlay)
+    - overlay : 샘플 프레임마다 최강 파손 탐지(박스+마스크). 실시간 오버레이용, 쿨다운 없음.
+    - detections : overlay에서 쿨다운 창별 피크만 뽑은 알람 타임라인.
+    추론은 프레임당 1회뿐이라 overlay를 추가해도 비용은 늘지 않는다.
+    """
     import tempfile
 
     import cv2  # ultralytics(opencv) 의존성에 포함
@@ -110,7 +188,7 @@ def _video_timeline(data: bytes, conf: float, sample_fps: float) -> tuple[float,
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
-    detections: list[dict] = []
+    overlay: list[dict] = []
     duration = 0.0
     try:
         cap = cv2.VideoCapture(tmp_path)
@@ -119,36 +197,14 @@ def _video_timeline(data: bytes, conf: float, sample_fps: float) -> tuple[float,
         duration = (total / src_fps) if src_fps else 0.0
         step = max(int(round(src_fps / max(sample_fps, 0.1))), 1)
         idx = 0
-        last_emit = -999.0
         while True:
             ok, frame = cap.read()
             if not ok:
                 break
             if idx % step == 0:
-                t = idx / src_fps
-                result = _model.predict(frame, conf=conf, verbose=False)[0]
-                best = None
-                if result.boxes is not None:
-                    for box in result.boxes:
-                        name = result.names[int(box.cls[0])]
-                        c = float(box.conf[0])
-                        if name in _DAMAGED and (best is None or c > best[1]):
-                            x1, y1, x2, y2 = (float(v) for v in box.xyxyn[0])
-                            best = (name, c, (x1, y1, x2, y2))
-                # 15초 쿨다운(프론트 UX와 동일)으로 연속 프레임 중복 억제
-                if best and t - last_emit >= 15.0:
-                    last_emit = t
-                    detections.append(
-                        {
-                            "t": round(t, 2),
-                            "class_name": best[0],
-                            "confidence": round(best[1], 3),
-                            "box": {
-                                "x1": best[2][0], "y1": best[2][1],
-                                "x2": best[2][2], "y2": best[2][3],
-                            },
-                        }
-                    )
+                item = _best_damaged(_model.predict(frame, conf=conf, verbose=False)[0], idx / src_fps)
+                if item is not None:
+                    overlay.append(item)
             idx += 1
         cap.release()
     finally:
@@ -156,7 +212,7 @@ def _video_timeline(data: bytes, conf: float, sample_fps: float) -> tuple[float,
             os.unlink(tmp_path)
         except OSError:
             pass
-    return duration, detections
+    return duration, _peak_detections(overlay), overlay
 
 
 @router.post("/video")
@@ -169,20 +225,24 @@ async def infer_video(
     """영상 업로드 → 시각(t)별 탐지 타임라인.
 
     반환: {"model": "loaded"|"absent", "duration": float,
-           "detections": [{"t", "class_name", "confidence", "box"}]}
+           "detections": [{"t","class_name","confidence","box"}],   # 알람(피크)
+           "overlay":    [{"t","class_name","confidence","box","mask?"}]}  # 실시간 오버레이
     """
     data = await video.read()
     _load()
     if _model is None:
+        mock = _mock_timeline(data or video.filename.encode(), duration)
         return {
             "model": "absent",
             "reason": _model_error,
             "duration": duration,
-            "detections": _mock_timeline(data or video.filename.encode(), duration),
+            "detections": mock,
+            "overlay": mock,  # 모델 부재 시 목 박스를 오버레이로 재사용(마스크 없음)
         }
-    src_duration, detections = _video_timeline(data, conf, sample_fps)
+    src_duration, detections, overlay = _video_timeline(data, conf, sample_fps)
     return {
         "model": "loaded",
         "duration": src_duration or duration,
         "detections": detections,
+        "overlay": overlay,
     }

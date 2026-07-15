@@ -26,6 +26,7 @@ export default function WalkPage() {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null); // 비디오 위 실시간 탐지 오버레이
 
   const [intro, setIntro] = useState(true);
   const [view, setView] = useState(0); // 0 지도 뷰, 1 카메라 뷰
@@ -44,11 +45,18 @@ export default function WalkPage() {
   const demoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mock = useRef(new MockDetector());
   const timeline = useRef<VideoTimelineItem[]>([]);
+  const overlayTl = useRef<VideoTimelineItem[]>([]); // 밀집 오버레이 타임라인
   const tlPtr = useRef(0);
   const tlTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rafId = useRef<number | null>(null);
+  const viewRef = useRef(view); // rAF 루프에서 최신 뷰 참조
   const lastLoc = useRef<{ lat: number; lng: number } | null>(null);
   const lastDetectionAt = useRef(0);
   const busy = useRef(false);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   // 타이머
   useEffect(() => {
@@ -72,9 +80,56 @@ export default function WalkPage() {
     });
   }, []);
 
+  // 현재 영상 프레임 위에 박스·마스크·라벨을 그려 주석 프레임(object URL)을 만든다.
+  // 승인 모달에 "AI가 실제로 본 화면"을 그대로 보여주기 위함(실데이터).
+  const captureAnnotated = useCallback((item: VideoTimelineItem): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const video = videoRef.current;
+      if (!video || video.videoWidth === 0) return resolve(null);
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(video, 0, 0);
+      const W = c.width;
+      const H = c.height;
+      if (item.mask && item.mask.length > 2) {
+        ctx.beginPath();
+        item.mask.forEach(([nx, ny], i) => {
+          const x = nx * W;
+          const y = ny * H;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(64,110,255,0.35)';
+        ctx.fill();
+      }
+      const bx = item.box.x1 * W;
+      const by = item.box.y1 * H;
+      const bw = (item.box.x2 - item.box.x1) * W;
+      const bh = (item.box.y2 - item.box.y1) * H;
+      ctx.lineWidth = Math.max(2, W * 0.006);
+      ctx.strokeStyle = '#2f5bff';
+      ctx.strokeRect(bx, by, bw, bh);
+      const fs = Math.max(16, Math.round(W * 0.035));
+      const text = `${CLASS_KR[item.class_name] ?? item.class_name} ${item.confidence.toFixed(2)}`;
+      ctx.font = `600 ${fs}px Pretendard, system-ui, sans-serif`;
+      const tw = ctx.measureText(text).width;
+      const ly = Math.max(0, by - fs * 1.5);
+      ctx.fillStyle = '#2f5bff';
+      ctx.fillRect(bx, ly, tw + fs * 0.8, fs * 1.5);
+      ctx.fillStyle = '#fff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx + fs * 0.4, ly + fs * 0.75);
+      c.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.85);
+    });
+  }, []);
+
   // 탐지 이벤트 공통 처리: 현재 프레임 캡처 → 서버 저장 → 임계값 게이트
   const handleDetection = useCallback(
-    async (e: { className: string; confidence: number }, skipCooldown = false) => {
+    async (e: { className: string; confidence: number; item?: VideoTimelineItem }, skipCooldown = false) => {
       const now = Date.now();
       if (busy.current) return;
       if (!skipCooldown && now - lastDetectionAt.current < DETECTION_COOLDOWN_MS) return;
@@ -82,12 +137,21 @@ export default function WalkPage() {
       lastDetectionAt.current = now;
       try {
         const loc = lastLoc.current ?? { lat: SEOUL[0], lng: SEOUL[1] };
-        // 데모 모드: 합성 영상 프레임 대신 시안 원본 파손 사진을 캡처로 사용
-        const blob = USE_DEMO_GPS
-          ? await fetch('/assets/sample-damage.jpg')
-              .then((r) => r.blob())
-              .catch(() => null)
-          : await captureFrame();
+        // 박스가 있는 실탐지면 실제 영상 프레임을 캡처(원본=서버·LLM용, 주석본=모달 표시용).
+        // 박스 없는 이벤트(목 보강 등)는 데모 모드에서 시안 원본 파손 사진으로 폴백.
+        let blob: Blob | null = null;
+        let annotatedUrl: string | undefined;
+        if (e.item?.box) {
+          blob = await captureFrame();
+          if (blob) annotatedUrl = (await captureAnnotated(e.item)) ?? undefined;
+        }
+        if (!blob) {
+          blob = USE_DEMO_GPS
+            ? await fetch('/assets/sample-damage.jpg')
+                .then((r) => r.blob())
+                .catch(() => null)
+            : await captureFrame();
+        }
         let serverId: number | null = null;
         if (blob) {
           try {
@@ -112,6 +176,7 @@ export default function WalkPage() {
             lat: loc.lat,
             lng: loc.lng,
             imageUrl: blob ? URL.createObjectURL(blob) : '',
+            annotatedUrl,
             imageBlob: blob,
             status: 'pending',
             at: new Date().toISOString(),
@@ -123,7 +188,7 @@ export default function WalkPage() {
         busy.current = false;
       }
     },
-    [captureFrame],
+    [captureFrame, captureAnnotated],
   );
 
   // 영상 재생 시각에 맞춰 타임라인 탐지 트리거
@@ -136,10 +201,92 @@ export default function WalkPage() {
       while (tlPtr.current < items.length && v.currentTime >= items[tlPtr.current].t) {
         const item = items[tlPtr.current];
         tlPtr.current += 1;
-        handleDetection({ className: item.class_name, confidence: item.confidence }, true);
+        handleDetection({ className: item.class_name, confidence: item.confidence, item }, true);
       }
     }, 400);
   }, [handleDetection]);
+
+  // 재생 시각에 맞는 오버레이 프레임(가장 가까운 최근 항목)을 찾는다.
+  const activeOverlay = (t: number): VideoTimelineItem | null => {
+    let found: VideoTimelineItem | null = null;
+    for (const it of overlayTl.current) {
+      if (it.t <= t + 0.05 && t - it.t < 0.9 && (!found || it.t > found.t)) found = it;
+    }
+    return found;
+  };
+
+  // 비디오 위에 실시간 탐지 결과(박스·마스크·라벨)를 그린다. 카메라 뷰에서만.
+  const drawOverlay = useCallback(() => {
+    const canvas = overlayRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.max(1, Math.round(rect.width * dpr));
+    const bh = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    if (viewRef.current !== 1) return; // 카메라 뷰에서만 표시
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+    const item = activeOverlay(video.currentTime);
+    if (!item) return;
+    // object-fit: cover 매핑 — 표시 영역에 맞춰 확대·크롭된 좌표 변환
+    const scale = Math.max(rect.width / vw, rect.height / vh);
+    const rw = vw * scale;
+    const rh = vh * scale;
+    const ox = (rect.width - rw) / 2;
+    const oy = (rect.height - rh) / 2;
+    const mx = (nx: number) => ox + nx * rw;
+    const my = (ny: number) => oy + ny * rh;
+    if (item.mask && item.mask.length > 2) {
+      ctx.beginPath();
+      item.mask.forEach(([nx, ny], i) => {
+        const x = mx(nx);
+        const y = my(ny);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(64,110,255,0.35)';
+      ctx.fill();
+    }
+    const x = mx(item.box.x1);
+    const y = my(item.box.y1);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#2f5bff';
+    ctx.strokeRect(x, y, mx(item.box.x2) - x, my(item.box.y2) - y);
+    const text = `${CLASS_KR[item.class_name] ?? item.class_name} ${item.confidence.toFixed(2)}`;
+    ctx.font = '600 13px Pretendard, system-ui, sans-serif';
+    const tw = ctx.measureText(text).width;
+    const ly = Math.max(0, y - 20);
+    ctx.fillStyle = '#2f5bff';
+    ctx.fillRect(x, ly, tw + 12, 20);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 6, ly + 10);
+  }, []);
+
+  // 산책 중에는 매 프레임 오버레이를 다시 그린다 (영상 재생 시각과 동기).
+  useEffect(() => {
+    if (status !== 'walking') return;
+    const loop = () => {
+      drawOverlay();
+      rafId.current = requestAnimationFrame(loop);
+    };
+    rafId.current = requestAnimationFrame(loop);
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+    };
+  }, [status, drawOverlay]);
 
   const startSession = async () => {
     setIntro(false);
@@ -181,6 +328,7 @@ export default function WalkPage() {
       const duration = Number.isFinite(v?.duration) ? (v?.duration ?? 0) : 0;
       const result = await inferVideo(blob, duration);
       timeline.current = [...result.detections].sort((a, b) => a.t - b.t);
+      overlayTl.current = [...(result.overlay ?? [])].sort((a, b) => a.t - b.t);
       tlPtr.current = 0;
       startTimelineLoop();
       if (!timeline.current.some((d) => d.confidence >= ALERT_CONFIDENCE_THRESHOLD)) {
@@ -204,6 +352,8 @@ export default function WalkPage() {
     mock.current.stop();
     if (tlTimer.current) clearInterval(tlTimer.current);
     tlTimer.current = null;
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+    rafId.current = null;
     videoRef.current?.pause();
   }, []);
 
@@ -238,6 +388,19 @@ export default function WalkPage() {
           width: '100%',
           height: '46%',
           objectFit: 'cover',
+        }}
+      />
+      {/* 실시간 탐지 오버레이 — 영상 밴드와 동일 영역, 카메라 뷰에서만 렌더 */}
+      <canvas
+        ref={overlayRef}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '100%',
+          height: '46%',
+          pointerEvents: 'none',
+          zIndex: 1,
         }}
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
