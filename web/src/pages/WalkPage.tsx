@@ -82,7 +82,12 @@ export default function WalkPage() {
       lastDetectionAt.current = now;
       try {
         const loc = lastLoc.current ?? { lat: SEOUL[0], lng: SEOUL[1] };
-        const blob = await captureFrame();
+        // 데모 모드: 합성 영상 프레임 대신 시안 원본 파손 사진을 캡처로 사용
+        const blob = USE_DEMO_GPS
+          ? await fetch('/assets/sample-damage.jpg')
+              .then((r) => r.blob())
+              .catch(() => null)
+          : await captureFrame();
         let serverId: number | null = null;
         if (blob) {
           try {
