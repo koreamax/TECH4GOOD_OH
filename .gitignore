@@ -1,0 +1,46 @@
+# --- Node / Expo (app) ---
+node_modules/
+.expo/
+dist/
+web-build/
+app/ios/
+app/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# --- Python (server) ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- 런타임 산출물 ---
+server/media/
+server/*.db
+server/*.sqlite3
+
+# --- 자체 서명 인증서 (로컬 생성물) ---
+server/certs/
+
+# --- 모델 바이너리 (용량 문제로 미추적, ml/README.md 참고) ---
+app/assets/models/*.tflite
+*.pt
+*.onnx
+
+# --- 환경변수 / 비밀 ---
+.env
+.env.*
+!.env.example
+
+# --- OS / 에디터 / 로컬 툴링 ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/
+*.log

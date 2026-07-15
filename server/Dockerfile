@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+# libgl 등 ultralytics(opencv) 런타임 의존성
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-ml.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-ml.txt
+
+COPY app ./app
+COPY models ./models
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
+
+# 배포 환경변수 (플랫폼 대시보드/compose 에서 주입):
+#   DATABASE_URL  — Supabase PostgreSQL URI
+#   MODEL_PATH    — 예: /srv/models/best.pt
+#   GEMINI_API_KEY, NAVER_MAP_CLIENT_ID/SECRET
+#   SSL_CERTFILE/SSL_KEYFILE — 지정 시 HTTPS 기동(자체 서명 인증서를 볼륨 마운트)
+ENV PORT=8000 \
+    SSL_CERTFILE=/srv/certs/cert.pem \
+    SSL_KEYFILE=/srv/certs/key.pem
+EXPOSE 8000
+CMD ["sh", "./start.sh"]
