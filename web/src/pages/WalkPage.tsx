@@ -8,9 +8,11 @@ import WalkMapOverlay from '../components/WalkMapOverlay';
 import {
   ALERT_CONFIDENCE_THRESHOLD,
   CLASS_KR,
+  DEMO_DETECT_VIDEOS,
   DEMO_GPS_STEP_MS,
+  DEMO_NORMAL_VIDEOS,
   DEMO_ROUTE,
-  DEMO_VIDEO,
+  DEMO_STOP_INDICES,
   DETECTION_COOLDOWN_MS,
   USE_DEMO_GPS,
 } from '../config';
@@ -34,6 +36,7 @@ export default function WalkPage() {
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [videoError, setVideoError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [videoSrc, setVideoSrc] = useState(DEMO_NORMAL_VIDEOS[0]); // 현재 카메라 밴드 영상
 
   const status = useWalkStore((s) => s.status);
   const route = useWalkStore((s) => s.route);
@@ -42,7 +45,7 @@ export default function WalkPage() {
   const pendingAlertIndex = useWalkStore((s) => s.pendingAlertIndex);
 
   const watchId = useRef<number | null>(null);
-  const demoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const demoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mock = useRef(new MockDetector());
   const timeline = useRef<VideoTimelineItem[]>([]);
   const overlayTl = useRef<VideoTimelineItem[]>([]); // 밀집 오버레이 타임라인
@@ -53,6 +56,15 @@ export default function WalkPage() {
   const lastLoc = useRef<{ lat: number; lng: number } | null>(null);
   const lastDetectionAt = useRef(0);
   const busy = useRef(false);
+
+  // ===== 데모 연출 상태 =====
+  // 인식 영상별 실추론 캐시(정지점에서 지연 없이 재생). 인덱스 = DEMO_DETECT_VIDEOS 순서.
+  const videoData = useRef<{ timeline: VideoTimelineItem[]; overlay: VideoTimelineItem[] }[]>([]);
+  const activeDetect = useRef(-1); // 현재 재생 중 인식영상 인덱스(-1 = 일반 걷기)
+  const routeIdx = useRef(0); // 다음 이동할 경로 인덱스
+  const normalSeg = useRef(0); // 현재 평시 세그먼트(0·1·2) — 정지 처리 후 증가
+  const stoppedRef = useRef(false); // 정지점에서 멈춰 알람 대기 중인지
+  const seekTarget = useRef<number | null>(null); // 인식영상 로드 후 시킹할 시각(피크 직전)
 
   useEffect(() => {
     viewRef.current = view;
@@ -80,25 +92,37 @@ export default function WalkPage() {
     });
   }, []);
 
-  // 현재 영상 프레임 위에 박스·마스크·라벨을 그려 주석 프레임(object URL)을 만든다.
-  // 승인 모달에 "AI가 실제로 본 화면"을 그대로 보여주기 위함(실데이터).
+  // 현재 영상 프레임을 '박스 중심 정사각'으로 크롭하고 박스·마스크·라벨을 그려
+  // 주석 프레임(object URL)을 만든다. 승인 모달에 인식된 파손이 가운데 오도록(사용자 요청).
   const captureAnnotated = useCallback((item: VideoTimelineItem): Promise<string | null> => {
     return new Promise((resolve) => {
       const video = videoRef.current;
       if (!video || video.videoWidth === 0) return resolve(null);
+      const W = video.videoWidth;
+      const H = video.videoHeight;
+      const b = item.box;
+      const bw = (b.x2 - b.x1) * W;
+      const bh = (b.y2 - b.y1) * H;
+      const cx = ((b.x1 + b.x2) / 2) * W;
+      const cy = ((b.y1 + b.y2) / 2) * H;
+      // 박스를 넉넉히 감싸는 정사각 크롭 → 파손이 가운데. 프레임 경계로 클램프.
+      let size = Math.max(bw, bh) * 1.9 + Math.min(W, H) * 0.05;
+      size = Math.min(size, W, H);
+      let sx = Math.max(0, Math.min(cx - size / 2, W - size));
+      let sy = Math.max(0, Math.min(cy - size / 2, H - size));
       const c = document.createElement('canvas');
-      c.width = video.videoWidth;
-      c.height = video.videoHeight;
+      c.width = Math.round(size);
+      c.height = Math.round(size);
       const ctx = c.getContext('2d');
       if (!ctx) return resolve(null);
-      ctx.drawImage(video, 0, 0);
-      const W = c.width;
-      const H = c.height;
+      ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+      const gx = (nx: number) => nx * W - sx; // 프레임 정규좌표 → 크롭 로컬좌표
+      const gy = (ny: number) => ny * H - sy;
       if (item.mask && item.mask.length > 2) {
         ctx.beginPath();
         item.mask.forEach(([nx, ny], i) => {
-          const x = nx * W;
-          const y = ny * H;
+          const x = gx(nx);
+          const y = gy(ny);
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
@@ -106,24 +130,20 @@ export default function WalkPage() {
         ctx.fillStyle = 'rgba(64,110,255,0.35)';
         ctx.fill();
       }
-      const bx = item.box.x1 * W;
-      const by = item.box.y1 * H;
-      const bw = (item.box.x2 - item.box.x1) * W;
-      const bh = (item.box.y2 - item.box.y1) * H;
-      ctx.lineWidth = Math.max(2, W * 0.006);
+      ctx.lineWidth = Math.max(2, size * 0.008);
       ctx.strokeStyle = '#2f5bff';
-      ctx.strokeRect(bx, by, bw, bh);
-      const fs = Math.max(16, Math.round(W * 0.035));
+      ctx.strokeRect(gx(b.x1), gy(b.y1), bw, bh);
+      const fs = Math.max(14, Math.round(size * 0.055));
       const text = `${CLASS_KR[item.class_name] ?? item.class_name} ${item.confidence.toFixed(2)}`;
       ctx.font = `600 ${fs}px Pretendard, system-ui, sans-serif`;
       const tw = ctx.measureText(text).width;
-      const ly = Math.max(0, by - fs * 1.5);
+      const ly = Math.max(0, gy(b.y1) - fs * 1.4);
       ctx.fillStyle = '#2f5bff';
-      ctx.fillRect(bx, ly, tw + fs * 0.8, fs * 1.5);
+      ctx.fillRect(gx(b.x1), ly, tw + fs * 0.8, fs * 1.4);
       ctx.fillStyle = '#fff';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, bx + fs * 0.4, ly + fs * 0.75);
-      c.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.85);
+      ctx.fillText(text, gx(b.x1) + fs * 0.4, ly + fs * 0.7);
+      c.toBlob((bl) => resolve(bl ? URL.createObjectURL(bl) : null), 'image/jpeg', 0.85);
     });
   }, []);
 
@@ -203,7 +223,7 @@ export default function WalkPage() {
         tlPtr.current += 1;
         handleDetection({ className: item.class_name, confidence: item.confidence, item }, true);
       }
-    }, 400);
+    }, 200);
   }, [handleDetection]);
 
   // 재생 시각에 맞는 오버레이 프레임(가장 가까운 최근 항목)을 찾는다.
@@ -288,24 +308,97 @@ export default function WalkPage() {
     };
   }, [status, drawOverlay]);
 
+  // 카메라 밴드 영상을 교체하고, 그 영상의 실추론 타임라인/오버레이를 활성화한다.
+  const switchVideo = useCallback((src: string, detectIndex: number) => {
+    activeDetect.current = detectIndex;
+    const data = detectIndex >= 0 ? videoData.current[detectIndex] : null;
+    timeline.current = data?.timeline ?? [];
+    overlayTl.current = data?.overlay ?? [];
+    tlPtr.current = 0;
+    // 인식영상은 피크(파손) 직전으로 시킹 → 카메라 전환 직후 바로 박스·알람이 뜬다.
+    const peakT = data?.timeline?.[0]?.t;
+    seekTarget.current = peakT != null ? Math.max(0, peakT - 0.2) : null;
+    setVideoSrc(src); // <video src> 변경 → 아래 effect가 재생, onLoadedData가 시킹
+  }, []);
+
+  // videoSrc가 바뀌면 처음부터 재생(새 소스는 currentTime 0으로 리셋됨).
+  useEffect(() => {
+    if (status !== 'walking') return;
+    const v = videoRef.current;
+    v?.play().catch(() => undefined);
+  }, [videoSrc, status]);
+
+  // 정지점 도달 → 핀 멈춤 + 해당 인식 영상으로 카메라뷰 자동 전환(사용자 확정).
+  const triggerDetectionStop = useCallback(
+    (k: number) => {
+      stoppedRef.current = true;
+      switchVideo(DEMO_DETECT_VIDEOS[k], k);
+      setView(1); // 자동 카메라뷰
+    },
+    [switchVideo],
+  );
+
+  // 경로를 한 스텝 이동. 정지점 인덱스면 멈춰서 인식 시퀀스 시작.
+  const walkStep = useCallback(() => {
+    const i = routeIdx.current;
+    if (i >= DEMO_ROUTE.length) return; // 완주
+    const [lat, lng] = DEMO_ROUTE[i];
+    lastLoc.current = { lat, lng };
+    useWalkStore.getState().addRoutePoint(lat, lng);
+    routeIdx.current = i + 1;
+    const k = DEMO_STOP_INDICES.indexOf(i);
+    if (k >= 0) {
+      triggerDetectionStop(k);
+      return; // 다음 스텝 예약 안 함 → 정지 (모달 처리 후 재개)
+    }
+    demoTimer.current = setTimeout(walkStep, DEMO_GPS_STEP_MS);
+  }, [triggerDetectionStop]);
+
+  // 모달 처리 후: 다음 평시 세그먼트 영상·지도뷰로 복귀하고 다음 구간으로 이동 재개.
+  const resumeWalk = useCallback(() => {
+    if (!stoppedRef.current) return;
+    stoppedRef.current = false;
+    normalSeg.current = Math.min(normalSeg.current + 1, DEMO_NORMAL_VIDEOS.length - 1);
+    switchVideo(DEMO_NORMAL_VIDEOS[normalSeg.current], -1);
+    setView(0);
+    demoTimer.current = setTimeout(walkStep, DEMO_GPS_STEP_MS);
+  }, [switchVideo, walkStep]);
+
   const startSession = async () => {
     setIntro(false);
     useWalkStore.getState().startWalk();
+    routeIdx.current = 0;
+    normalSeg.current = 0;
+    stoppedRef.current = false;
+
+    // 인식 영상들을 미리 서버 실추론 → 정지점에서 지연 없이 재생(캐시).
+    setAnalyzing(true);
+    try {
+      videoData.current = await Promise.all(
+        DEMO_DETECT_VIDEOS.map(async (src) => {
+          const blob = await fetch(src).then((r) => r.blob());
+          const r = await inferVideo(blob, 0);
+          return {
+            timeline: [...r.detections].sort((a, b) => a.t - b.t),
+            overlay: [...(r.overlay ?? [])].sort((a, b) => a.t - b.t),
+          };
+        }),
+      );
+    } catch {
+      videoData.current = DEMO_DETECT_VIDEOS.map(() => ({ timeline: [], overlay: [] }));
+    } finally {
+      setAnalyzing(false);
+    }
+
+    // 평시1 영상 재생 + 탐지 타임라인 루프 시작(영상 전환에도 계속 동작).
+    switchVideo(DEMO_NORMAL_VIDEOS[0], -1);
+    startTimelineLoop();
 
     if (USE_DEMO_GPS) {
-      // 모의 GPS: 사전 정의 경로(석촌호수)를 따라 강아지 핀이 이동 (데모 확정 방식)
-      let idx = 0;
-      const step = () => {
-        if (idx >= DEMO_ROUTE.length) return;
-        const [lat, lng] = DEMO_ROUTE[idx];
-        idx += 1;
-        lastLoc.current = { lat, lng };
-        useWalkStore.getState().addRoutePoint(lat, lng);
-      };
-      step(); // 시작 지점 즉시 표시
-      demoTimer.current = setInterval(step, DEMO_GPS_STEP_MS);
+      // 모의 GPS: 경로(석촌호수·인도)를 따라 이동하다 정지점에서 멈춰 인식 시퀀스.
+      walkStep();
     } else {
-      // 실제 GPS 추적
+      // 실제 GPS 추적 (연출 없음) — 첫 인식영상 재생으로 알람 1회 시연.
       const onPos = (p: GeolocationPosition) => {
         lastLoc.current = { lat: p.coords.latitude, lng: p.coords.longitude };
         useWalkStore.getState().addRoutePoint(p.coords.latitude, p.coords.longitude);
@@ -315,39 +408,15 @@ export default function WalkPage() {
         navigator.geolocation?.watchPosition(onPos, () => undefined, {
           enableHighAccuracy: true,
         }) ?? null;
-    }
-
-    // 데모 영상 재생 시작 (사용자 클릭 제스처 컨텍스트라 자동재생 허용)
-    const v = videoRef.current;
-    v?.play().catch(() => undefined);
-
-    // 영상을 서버에 업로드 → 시각별 탐지 타임라인 수신
-    setAnalyzing(true);
-    try {
-      const blob = await fetch(DEMO_VIDEO).then((r) => r.blob());
-      const duration = Number.isFinite(v?.duration) ? (v?.duration ?? 0) : 0;
-      const result = await inferVideo(blob, duration);
-      timeline.current = [...result.detections].sort((a, b) => a.t - b.t);
-      overlayTl.current = [...(result.overlay ?? [])].sort((a, b) => a.t - b.t);
-      tlPtr.current = 0;
-      startTimelineLoop();
-      if (!timeline.current.some((d) => d.confidence >= ALERT_CONFIDENCE_THRESHOLD)) {
-        // 알람 임계값을 넘는 실탐지가 없으면 목 탐지로 보강 — 데모 무중단
-        // (임계값 미만 실탐지는 타임라인이 그대로 조용히 축적)
-        mock.current.start((e) => handleDetection(e));
-      }
-    } catch {
-      // 서버 불가 시 로컬 목 탐지로 폴백 (플로우 무중단)
-      mock.current.start((e) => handleDetection(e));
-    } finally {
-      setAnalyzing(false);
+      switchVideo(DEMO_DETECT_VIDEOS[0], 0);
+      setView(1);
     }
   };
 
   const stopSensors = useCallback(() => {
     if (watchId.current != null) navigator.geolocation?.clearWatch(watchId.current);
     watchId.current = null;
-    if (demoTimer.current) clearInterval(demoTimer.current);
+    if (demoTimer.current) clearTimeout(demoTimer.current);
     demoTimer.current = null;
     mock.current.stop();
     if (tlTimer.current) clearInterval(tlTimer.current);
@@ -375,12 +444,24 @@ export default function WalkPage() {
           시안 카메라 뷰 = 흰 배경 + 중앙 밴드 */}
       <video
         ref={videoRef}
-        src={DEMO_VIDEO}
+        src={videoSrc}
         muted
         playsInline
         loop
         preload="auto"
         onError={() => setVideoError(true)}
+        onLoadedData={() => {
+          setVideoError(false);
+          const v = videoRef.current;
+          if (v && seekTarget.current != null) {
+            try {
+              v.currentTime = seekTarget.current; // 피크 직전으로 점프 → 즉시 탐지
+            } catch {
+              /* 아직 시킹 불가면 무시 */
+            }
+            seekTarget.current = null;
+          }
+        }}
         style={{
           position: 'absolute',
           top: '50%',
@@ -620,7 +701,10 @@ export default function WalkPage() {
           onResolved={(patch) => {
             if (detailIndex != null) useWalkStore.getState().updateDetection(detailIndex, patch);
           }}
-          onClose={() => setDetailIndex(null)}
+          onClose={() => {
+            setDetailIndex(null);
+            resumeWalk(); // 정지 상태였으면 다음 구간으로 이동 재개
+          }}
         />
       )}
     </div>

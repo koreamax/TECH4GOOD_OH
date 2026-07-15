@@ -12,6 +12,25 @@ export const INFER_INTERVAL_MS = 1500;
 // 산책 화면에 재생할 데모 영상 (public/ 하위). 실제 촬영본으로 교체 가능.
 export const DEMO_VIDEO: string = import.meta.env.VITE_DEMO_VIDEO ?? '/demo-walk.mp4';
 
+// ===== 데모 연출: 영상 세트 =====
+// 플로우: 평시1 → [정지·인식1] → 평시2 → [정지·인식2] → 평시3
+// 평시(일반 걷기) 영상 3개 — 걷기 세그먼트(정지 전·사이·후)에 순서대로 재생(루프).
+export const DEMO_NORMAL_VIDEOS: string[] = [
+  import.meta.env.VITE_DEMO_NORMAL1 ?? '/demo-normal1.mp4', // 평시1 (3.38.29)
+  import.meta.env.VITE_DEMO_NORMAL2 ?? '/demo-normal2.mp4', // 평시2 (04-29-39)
+  import.meta.env.VITE_DEMO_NORMAL3 ?? '/demo-normal3.mp4', // 평시3 (04-30-29)
+];
+
+// 정지점에서 재생할 '인식·신고 영상' 2개. 각 정지점과 1:1. 서버 실추론으로 박스·알람 발생.
+export const DEMO_DETECT_VIDEOS: string[] = [
+  import.meta.env.VITE_DEMO_DETECT1 ?? '/demo-walk.mp4', // 인식1 (02-04-11) 피크 0.79
+  import.meta.env.VITE_DEMO_DETECT2 ?? '/demo-detect2.mp4', // 인식2 (02-04-43) 피크 0.60
+];
+
+// DEMO_ROUTE 상에서 핀이 멈추는 지점 인덱스. DEMO_DETECT_VIDEOS 와 같은 순서·개수.
+// index 4 ≈ 진행률 20%, index 16 ≈ 71%. 데모 페이싱·지도 위치에 맞춰 조정 가능.
+export const DEMO_STOP_INDICES: number[] = [4, 16];
+
 // Naver 지도 Client ID (NCP). 없으면 지도 자리에 폴백 UI 표시.
 export const NAVER_MAP_CLIENT_ID: string = import.meta.env.VITE_NAVER_MAP_CLIENT_ID ?? '';
 
