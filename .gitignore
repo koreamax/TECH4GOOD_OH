@@ -31,6 +31,8 @@ server/certs/
 app/assets/models/*.tflite
 *.pt
 *.onnx
+# 서버 추론용 gaero v3 모델은 추적(데모/배포에 필요, 6MB)
+!server/models/best.pt
 
 # --- 환경변수 / 비밀 ---
 .env
