@@ -39,6 +39,37 @@ def _template(class_name: str, address: str, detected_at: str) -> dict:
     }
 
 
+def _openai(image_bytes: bytes, prompt: str, key: str) -> dict:
+    """OpenAI 호환 폴백 — 팀 키가 sk-* (OpenAI) 형식일 때 사용."""
+    import base64
+
+    import httpx
+
+    b64 = base64.b64encode(image_bytes).decode()
+    mime = "image/png" if image_bytes[:8].startswith(b"\x89PNG") else "image/jpeg"
+    resp = httpx.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "max_tokens": 400,
+        },
+        timeout=25,
+    )
+    resp.raise_for_status()
+    return json.loads(resp.json()["choices"][0]["message"]["content"])
+
+
 def generate_complaint(
     image_bytes: bytes,
     class_name: str,
@@ -50,6 +81,22 @@ def generate_complaint(
     key = os.getenv("GEMINI_API_KEY", "").strip()
     if not key:
         return _template(class_name, address, detected_at), "template"
+
+    # sk-* 는 OpenAI 키 — Gemini SDK 대신 OpenAI 비전 호출로 자동 전환
+    if key.startswith("sk-"):
+        try:
+            prompt = PROMPT.format(
+                class_kr=CLASS_KR.get(class_name, class_name),
+                conf=round(confidence * 100),
+                address=address,
+                detected_at=detected_at,
+            )
+            data = _openai(image_bytes, prompt, key)
+            if not data.get("title") or not data.get("content"):
+                raise ValueError("empty title/content")
+            return {"title": data["title"], "content": data["content"]}, "gemini"
+        except Exception:
+            return _template(class_name, address, detected_at), "template"
 
     try:
         from google import genai
