@@ -15,7 +15,7 @@
 - [ ] Supabase 프로젝트 생성 → PostgreSQL URI를 `DATABASE_URL` 로 주입
 - [ ] Docker 이미지 빌드 → Cloud Run/Railway 배포 (자동 HTTPS — 인증서 직접 관리 불필요)
 - [ ] Gemini API 키 발급 → 배포 env (없어도 템플릿 폴백으로 데모 가능)
-- [ ] Kakao REST 키 발급(역지오코딩) → 배포 env
+- [ ] NCP 지도 인증키(Client ID+Secret) → 배포 env (지도·역지오코딩 공용)
 - [ ] 신뢰도 점수 로직 검증 (동일 지점 반복 탐지 시 점수 상승 확인)
 - [ ] ⚠️ 업로드 이미지가 컨테이너 디스크에 저장됨 — 재배포 시 소실. 데모는 무방,
       상시 운영하려면 Supabase Storage 전환 필요

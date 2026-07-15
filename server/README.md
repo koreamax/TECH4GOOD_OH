@@ -46,7 +46,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8443 \
 |----|---------|
 | `GEMINI_API_KEY` | 민원 문안 템플릿 폴백 (`source: "template"`) |
 | `GEMINI_MODEL` | 기본 `gemini-2.5-flash` |
-| `KAKAO_REST_API_KEY` | 주소 대신 좌표 문자열 |
+| `NAVER_MAP_CLIENT_ID` + `NAVER_MAP_CLIENT_SECRET` | 주소 대신 좌표 문자열 (NCP 역지오코딩) |
 | `MODEL_PATH` | `/infer·/infer/video` 가 목 타임라인 반환 |
 | `DATABASE_URL` | 로컬 SQLite (`pawpatrol.db`) |
 | `SSL_CERTFILE`·`SSL_KEYFILE` | HTTP 로 기동 (상위 TLS 종료 가정) |

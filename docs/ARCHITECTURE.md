@@ -23,7 +23,7 @@ flowchart LR
     end
     subgraph server["🖥 FastAPI"]
         GEM["Gemini 프록시\n(민원 문안 생성)"]
-        GEO["역지오코딩\n(Kakao)"]
+        GEO["역지오코딩\n(Naver)"]
         SCORE["신뢰도 점수\n(30m 클러스터)"]
         MOCK["모의 접수\n(접수번호 발급)"]
         DB[(SQLite)]
