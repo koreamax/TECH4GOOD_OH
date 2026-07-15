@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Paw Patrol Network API — Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    body { margin: 0; background: #fafafa; }
+    .topbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    const spec = {
+      openapi: "3.1.0",
+      info: {
+        title: "Paw Patrol Network API",
+        version: "0.1.0",
+        description:
+          "FastAPI 소스(server/app) 기준 정리 · 대상 커밋 main. " +
+          "파일 업로드가 있는 엔드포인트는 multipart/form-data, 그 외는 application/json. " +
+          "폴백: DB 없으면 SQLite · 모델 없으면 mock 추론 · Gemini 키 없으면 템플릿 문안 · Kakao 키 없으면 좌표 문자열.",
+      },
+      servers: [
+        { url: "https://localhost:8443", description: "로컬 Docker (자체서명 HTTPS)" },
+        { url: "http://localhost:8000", description: "TLS 종료 위임 시 (HTTP)" },
+      ],
+      tags: [
+        { name: "system" }, { name: "walks" }, { name: "detections" },
+        { name: "reports" }, { name: "complaints" }, { name: "map" },
+        { name: "feed" }, { name: "infer" },
+      ],
+      paths: {
+        "/health": {
+          get: {
+            tags: ["system"], summary: "헬스체크",
+            responses: { "200": { description: "OK", content: { "application/json": {
+              schema: { type: "object", properties: { status: { type: "string", example: "ok" } } } } } } },
+          },
+        },
+        "/geocode/reverse": {
+          get: {
+            tags: ["system"], summary: "좌표 → 주소 역지오코딩",
+            parameters: [
+              { name: "lat", in: "query", required: true, schema: { type: "number" } },
+              { name: "lng", in: "query", required: true, schema: { type: "number" } },
+            ],
+            responses: { "200": { description: "OK", content: { "application/json": {
+              schema: { type: "object", properties: { address: { type: "string" } } } } } } },
+          },
+        },
+        "/walks": {
+          post: {
+            tags: ["walks"], summary: "산책 기록 생성",
+            requestBody: { required: true, content: { "multipart/form-data": { schema: {
+              type: "object",
+              required: ["route_json", "started_at", "ended_at", "distance_m", "duration_s"],
+              properties: {
+                route_json: { type: "string", description: "경로 좌표 배열 JSON 문자열" },
+                started_at: { type: "string" },
+                ended_at: { type: "string" },
+                distance_m: { type: "number" },
+                duration_s: { type: "integer" },
+                detection_ids: { type: "string", default: "", description: "연결할 탐지 id CSV, 예: 3,5,8" },
+                user_name: { type: "string", default: "익명의 순찰대원" },
+                dog_photo: { type: "string", format: "binary" },
+              },
+            } } } },
+            responses: { "200": { description: "생성된 산책", content: { "application/json": {
+              schema: { $ref: "#/components/schemas/Walk" } } } } },
+          },
+          get: {
+            tags: ["walks"], summary: "산책 목록 (id 내림차순)",
+            parameters: [{ name: "limit", in: "query", schema: { type: "integer", default: 20 } }],
+            responses: { "200": { description: "목록", content: { "application/json": {
+              schema: { type: "array", items: { $ref: "#/components/schemas/Walk" } } } } } },
+          },
+        },
+        "/walks/{walk_id}": {
+          get: {
+            tags: ["walks"], summary: "산책 상세 (탐지·신고 포함)",
+            parameters: [{ name: "walk_id", in: "path", required: true, schema: { type: "integer" } }],
+            responses: {
+              "200": { description: "상세", content: { "application/json": {
+                schema: { $ref: "#/components/schemas/WalkDetail" } } } },
+              "404": { description: "산책 기록 없음" },
+            },
+          },
+        },
+        "/detections": {
+          post: {
+            tags: ["detections"], summary: "파손 탐지 저장",
+            requestBody: { required: true, content: { "multipart/form-data": { schema: {
+              type: "object",
+              required: ["image", "class_name", "confidence", "lat", "lng"],
+              properties: {
+                image: { type: "string", format: "binary" },
+                class_name: { type: "string" },
+                confidence: { type: "number" },
+                lat: { type: "number" },
+                lng: { type: "number" },
+                walk_id: { type: "integer", nullable: true },
+                verified: { type: "string", enum: ["pending", "confirmed", "rejected"], default: "pending" },
+              },
+            } } } },
+            responses: {
+              "200": { description: "저장 결과", content: { "application/json": { schema: {
+                type: "object", properties: {
+                  id: { type: "integer" },
+                  image_url: { type: "string" },
+                  cluster_score: { type: "integer", description: "0~100" },
+                } } } } },
+              "400": { description: "verified 값 오류" },
+            },
+          },
+        },
+        "/detections/{detection_id}": {
+          patch: {
+            tags: ["detections"], summary: "탐지 검증 상태 변경",
+            parameters: [{ name: "detection_id", in: "path", required: true, schema: { type: "integer" } }],
+            requestBody: { required: true, content: { "application/json": { schema: {
+              type: "object", required: ["verified"],
+              properties: { verified: { type: "string", enum: ["pending", "confirmed", "rejected"] } },
+            } } } },
+            responses: {
+              "200": { description: "변경된 탐지", content: { "application/json": {
+                schema: { $ref: "#/components/schemas/Detection" } } } },
+              "400": { description: "값 오류" }, "404": { description: "탐지 없음" },
+            },
+          },
+        },
+        "/reports": {
+          post: {
+            tags: ["reports"], summary: "민원 신고 접수 (탐지 confirmed 처리 + 모의 접수번호)",
+            requestBody: { required: true, content: { "application/json": { schema: {
+              type: "object", required: ["detection_id", "title", "content"],
+              properties: {
+                detection_id: { type: "integer" },
+                title: { type: "string" },
+                content: { type: "string" },
+                address: { type: "string", default: "" },
+              },
+            } } } },
+            responses: {
+              "200": { description: "생성된 신고", content: { "application/json": {
+                schema: { $ref: "#/components/schemas/Report" } } } },
+              "404": { description: "탐지 없음" },
+            },
+          },
+          get: {
+            tags: ["reports"], summary: "신고 목록 (원본 탐지 포함)",
+            parameters: [{ name: "walk_id", in: "query", schema: { type: "integer" },
+              description: "지정 시 해당 산책의 탐지에 대한 신고만" }],
+            responses: { "200": { description: "목록", content: { "application/json": { schema: {
+              type: "array", items: {
+                allOf: [
+                  { $ref: "#/components/schemas/Report" },
+                  { type: "object", properties: { detection: {
+                    oneOf: [{ $ref: "#/components/schemas/Detection" }, { type: "null" }] } } },
+                ],
+              } } } } } },
+          },
+        },
+        "/complaints/generate": {
+          post: {
+            tags: ["complaints"], summary: "민원 문안 생성 (Gemini/템플릿, 저장 안 함)",
+            requestBody: { required: true, content: { "multipart/form-data": { schema: {
+              type: "object",
+              required: ["image", "class_name", "confidence", "lat", "lng"],
+              properties: {
+                image: { type: "string", format: "binary" },
+                class_name: { type: "string" },
+                confidence: { type: "number" },
+                lat: { type: "number" },
+                lng: { type: "number" },
+                detected_at: { type: "string", description: "없으면 현재 시각" },
+              },
+            } } } },
+            responses: { "200": { description: "생성 문안", content: { "application/json": { schema: {
+              type: "object", properties: {
+                title: { type: "string" }, content: { type: "string" },
+                address: { type: "string" },
+                source: { type: "string", enum: ["gemini", "template"] },
+              } } } } } },
+          },
+        },
+        "/map/markers": {
+          get: {
+            tags: ["map"], summary: "파손 지점 클러스터 마커",
+            description: "같은 클래스·반경 30m 탐지를 묶어 점수화. 점수: AI +30 / 승인 +30 / 다른 산책 재탐지 +20 / 같은 산책 반복 +10, 상한 100. rejected 제외.",
+            parameters: [
+              { name: "lat", in: "query", schema: { type: "number" } },
+              { name: "lng", in: "query", schema: { type: "number" } },
+              { name: "radius_m", in: "query", schema: { type: "number", default: 3000 } },
+            ],
+            responses: { "200": { description: "마커 목록", content: { "application/json": {
+              schema: { type: "array", items: { $ref: "#/components/schemas/Marker" } } } } } },
+          },
+        },
+        "/feed": {
+          get: {
+            tags: ["feed"], summary: "커뮤니티 피드 (현재 앱 IA 미사용, 확장 대비)",
+            parameters: [{ name: "limit", in: "query", schema: { type: "integer", default: 20 } }],
+            responses: { "200": { description: "피드 카드", content: { "application/json": {
+              schema: { type: "array", items: { $ref: "#/components/schemas/FeedCard" } } } } } },
+          },
+        },
+        "/infer": {
+          post: {
+            tags: ["infer"], summary: "단일 프레임(JPEG) 추론 (레거시)",
+            parameters: [{ name: "conf", in: "query", schema: { type: "number", default: 0.35 } }],
+            requestBody: { required: true, content: { "multipart/form-data": { schema: {
+              type: "object", required: ["image"],
+              properties: { image: { type: "string", format: "binary" } },
+            } } } },
+            responses: { "200": { description: "추론 결과", content: { "application/json": {
+              schema: { $ref: "#/components/schemas/InferResult" } } } } },
+          },
+        },
+        "/infer/video": {
+          post: {
+            tags: ["infer"], summary: "영상 업로드 → 시각(t)별 탐지 타임라인",
+            requestBody: { required: true, content: { "multipart/form-data": { schema: {
+              type: "object", required: ["video"],
+              properties: {
+                video: { type: "string", format: "binary" },
+                duration: { type: "number", default: 0.0, description: "프론트가 아는 영상 길이(초)" },
+                conf: { type: "number", default: 0.35 },
+                sample_fps: { type: "number", default: 2.0 },
+              },
+            } } } },
+            responses: { "200": { description: "타임라인", content: { "application/json": {
+              schema: { $ref: "#/components/schemas/VideoInferResult" } } } } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Box: {
+            type: "object", description: "0~1 정규화 좌표",
+            properties: {
+              x1: { type: "number" }, y1: { type: "number" },
+              x2: { type: "number" }, y2: { type: "number" },
+            },
+          },
+          Walk: {
+            type: "object",
+            properties: {
+              id: { type: "integer" },
+              started_at: { type: "string" },
+              ended_at: { type: "string" },
+              distance_m: { type: "number" },
+              duration_s: { type: "integer" },
+              route: { type: "array", items: { type: "object" } },
+              dog_photo_url: { type: "string", nullable: true },
+              user_name: { type: "string" },
+              detection_count: { type: "integer" },
+              report_count: { type: "integer" },
+            },
+          },
+          WalkDetail: {
+            allOf: [
+              { $ref: "#/components/schemas/Walk" },
+              { type: "object", properties: {
+                detections: { type: "array", items: { $ref: "#/components/schemas/Detection" } },
+                reports: { type: "array", items: { $ref: "#/components/schemas/Report" } },
+              } },
+            ],
+          },
+          Detection: {
+            type: "object",
+            properties: {
+              id: { type: "integer" },
+              walk_id: { type: "integer", nullable: true },
+              class_name: { type: "string", example: "sidewalk_damaged" },
+              confidence: { type: "number" },
+              lat: { type: "number" }, lng: { type: "number" },
+              image_url: { type: "string", nullable: true },
+              verified: { type: "string", enum: ["pending", "confirmed", "rejected"] },
+              created_at: { type: "string" },
+            },
+          },
+          Report: {
+            type: "object",
+            properties: {
+              id: { type: "integer" },
+              detection_id: { type: "integer" },
+              title: { type: "string" },
+              content: { type: "string" },
+              address: { type: "string" },
+              receipt_no: { type: "string", example: "SPP-20260716-0005" },
+              status: { type: "string", example: "접수완료" },
+              created_at: { type: "string" },
+            },
+          },
+          Marker: {
+            type: "object",
+            properties: {
+              lat: { type: "number" }, lng: { type: "number" },
+              class_name: { type: "string" },
+              score: { type: "integer", description: "0~100" },
+              level: { type: "string", enum: ["gray", "yellow", "orange", "red"] },
+              detection_count: { type: "integer" },
+              confirmed_count: { type: "integer" },
+              last_seen: { type: "string" },
+              image_url: { type: "string", nullable: true },
+            },
+          },
+          FeedCard: {
+            type: "object",
+            properties: {
+              walk_id: { type: "integer" },
+              user_name: { type: "string" },
+              date: { type: "string" },
+              distance_m: { type: "number" },
+              duration_s: { type: "integer" },
+              dog_photo_url: { type: "string", nullable: true },
+              route_preview: { type: "array", items: {
+                type: "object", properties: { lat: { type: "number" }, lng: { type: "number" } } } },
+              report_count: { type: "integer" },
+              badge: { type: "string" },
+            },
+          },
+          TimelineItem: {
+            type: "object",
+            properties: {
+              t: { type: "number", description: "시각(초)" },
+              class_name: { type: "string" },
+              confidence: { type: "number" },
+              box: { $ref: "#/components/schemas/Box" },
+              mask: { type: "array", nullable: true,
+                items: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2 },
+                description: "정규화 폴리곤(최대 60점)" },
+            },
+          },
+          InferResult: {
+            type: "object",
+            properties: {
+              model: { type: "string", enum: ["loaded", "absent"] },
+              reason: { type: "string", description: "model=absent 일 때" },
+              detections: { type: "array", items: {
+                type: "object", properties: {
+                  class_name: { type: "string" },
+                  confidence: { type: "number" },
+                  box: { $ref: "#/components/schemas/Box" },
+                } } },
+            },
+          },
+          VideoInferResult: {
+            type: "object",
+            properties: {
+              model: { type: "string", enum: ["loaded", "absent"] },
+              reason: { type: "string" },
+              duration: { type: "number" },
+              detections: { type: "array", items: { $ref: "#/components/schemas/TimelineItem" },
+                description: "알람(쿨다운 15s 창별 피크)" },
+              overlay: { type: "array", items: { $ref: "#/components/schemas/TimelineItem" },
+                description: "실시간 오버레이(샘플 프레임마다, mask 포함 가능)" },
+            },
+          },
+        },
+      },
+    };
+
+    window.onload = () => {
+      SwaggerUIBundle({ spec, dom_id: "#swagger-ui", deepLinking: true, tryItOutEnabled: true });
+    };
+  </script>
+</body>
+</html>

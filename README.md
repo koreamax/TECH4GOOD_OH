@@ -1,93 +1,133 @@
-# 🐾 Paw Patrol Network
+# 🐾 Paw Patrol Network — *Mission Pawss!ble*
 
-> 매일의 산책이 도시를 순찰합니다.
+> **매일의 산책이 도시를 순찰합니다.**
+> 반려견 산책으로 도시 위험을 발견하고, 지자체와 연결하는 시민참여 플랫폼
 
-반려견 산책 중 스마트폰 카메라로 보도·점자블록 파손을 AI가 탐지하고,
-사용자 승인(선 승인)을 거쳐 민원 문서를 자동 생성·접수하는 시민참여형 플랫폼입니다.
+<sub>SK텔레콤 × 하나금융그룹 2026 TECH4GOOD 해커톤 · 팀 **OH! (5조)**</sub>
 
-## 확정 스택
+---
 
-**웹(React) → Vercel · 백엔드(FastAPI) → Docker(+HTTPS 자체 서명) · 추론 = 서버 YOLO(영상 업로드) · 지도 = Naver Maps · LLM = Gemini API · DB = Supabase PostgreSQL**
+## 1. 프로젝트 소개
 
-## 저장소 구조 (모노레포)
+길을 걷다 파손된 보도블록·점자블록에 걸려 넘어질 뻔한 경험, 누구나 있습니다.
+점자블록 파손·훼손 민원만 3년간 **1,257건(관련 민원 중 1위, 44.2%)**, 튀어나온 보도블록에 걸려 전치 12주 사고까지 — **도시의 위험은 늘 "누군가 다치고 나서야" 발견됩니다.**
 
+기존 '반려견 순찰대' 같은 시도가 있었지만 모두 **사람의 눈**에 의존해 주관적·수동적이고, 노면 파손 같은 위험은 놓치기 쉬웠습니다.
+
+**Paw Patrol Network**는 매일 반복되는 반려견 산책을 도시 안전 데이터로 바꿉니다.
+산책 중 스마트폰(하네스형) 카메라로 촬영하면 **AI가 깨진 보도블록·점자블록을 자동으로 탐지**하고, 사용자 승인을 거쳐 **안전신문고 민원까지 자동 생성**합니다. 별도 교육·심사, 사람의 눈으로 하는 관찰, 민원 작성 모두 불필요 — **앱만 켜면 참여**할 수 있습니다.
+
+**한 번의 산책, 세 사람이 누리는 가치**
+
+| 대상 | 가치 |
+|---|---|
+| 🧑‍🦯 **반려인(사용자)** | 경로·거리·시간을 기록하며 반려견 활동을 관리하고, 일상 산책으로 도시 안전에 기여 |
+| 🏛 **지자체** | 산책 데이터로 생활 위험 요소를 파악하고, 필요한 곳을 빠르게 정비 (민원↓, 효율↑) |
+| 👵 **이동약자** | 방치되던 보행 위험이 개선되어 시각장애인·휠체어 이용자·고령자의 이동 환경 향상 |
+
+---
+
+## 2. 주요 기능
+
+산책 시작 → 실시간 AI 탐지 → 원터치 신고 → 산책 기록의 한 흐름으로 동작합니다.
+
+- **🐕 산책 시작 & 코스** — 시작 버튼 한 번으로 카메라·GPS가 켜지고 탐지 세션 시작. 나의 코스/추천 코스/신고 현황 제공
+- **📸 실시간 파손 탐지** — AI가 카메라 프레임을 지속 분석해 **보도블록·점자블록 파손을 실시간 탐지**하고, 파손 영역을 마스킹으로 표시
+- **🔔 감지 알림 & 교차 검증** — 파손 감지 시 진동·사운드 알림 + 파손 영역 사진 표시. 사용자가 "잘 인식됐는지" 확인(오탐은 재학습 데이터로 축적)
+- **📝 원터치 민원 작성** — AI가 감지 정보로 **안전신문고 민원 문안을 자동 작성**(발생지역·제목·신고내용). 사용자가 확인·수정 후 제출
+- **🗺 위험 지도** — 신고 지점을 지도 마커로 시각화. 같은 지점 반복 탐지·승인 여부로 **신뢰도 점수(색상 단계)** 산정
+- **📊 산책 요약 & 기록** — 산책 종료 시 코스·거리·시간·발견/신고 내역을 타임라인으로 요약해 안전 지도 데이터로 축적
+
+---
+
+## 3. 사용 기술
+
+**AI 탐지 모델**
+- **모델**: YOLO Segmentation (`yolo11n-seg`) — ①원본이 폴리곤 ②파손 영역 자체를 마스킹해 검증이 직관적 ③데모 효과가 강함
+- **데이터**: AI-Hub 「인도보행 영상」(국내, 총 67만 건) 중 Surface Masking 폴리곤 5만 건
+- **라벨**: `sidewalk` / `braille_guide_blocks` + `damaged` → 2개 클래스(`sidewalk_damaged`, `braille_damaged`) 추출
+- **전처리**: 다운로드 → damaged 추출 → 폴리곤 → YOLO Seg 변환 → Train/Val/Test 분리 + `data.yaml`
+
+**서비스 스택**
+
+| 영역 | 기술 |
+|---|---|
+| 프론트엔드 | React 18 + Vite + TypeScript, React Router, Zustand → **Vercel** 배포 |
+| 백엔드 | **FastAPI**(Python 3.11) + Uvicorn, SQLAlchemy → **Docker**(자체 서명 HTTPS) |
+| AI 추론 | Ultralytics YOLO11 (서버 사이드, 영상 업로드 방식) |
+| 지도 | Naver Maps v3 |
+| LLM(민원 문안) | Gemini API (`google-genai`) — 키 없으면 템플릿 폴백 |
+| DB | **Supabase** PostgreSQL (미설정 시 SQLite 폴백) |
+| 인프라(목표) | AWS(ECR·EC2/Docker·ALB·NAT·ACM·SQS, Auto Scaling) — 발표용 아키텍처 |
+
+> 모든 외부 키/모델은 **폴백 설계**: 키·모델이 없어도 전체 데모 플로우가 그대로 동작합니다.
+
+---
+
+## 4. 실행 방법 / 확인 방법
+
+### 저장소 구조 (모노레포)
 ```
-pawpatrol/
-├── web/      # ⭐ React 웹 프론트 (데모 주력, Vercel 배포)
-├── server/   # FastAPI 백엔드 (YOLO 추론·신고·지도·Gemini 프록시, Docker)
-├── app/      # React Native 프로토타입 (온디바이스 추론 로드맵용 — 데모 대상 아님)
-├── ml/       # 모델 변환 스크립트 (RN용 TFLite — 웹 데모에는 불필요)
-└── docs/     # 화면 목록 · 작업 분배 · API 명세 · 아키텍처
+TECH4GOOD_OH/
+├── web/      # ⭐ React 웹 프론트 (데모 주력, Vercel)
+├── server/   # FastAPI 백엔드 (YOLO 추론·신고·지도·Gemini, Docker)
+├── app/      # React Native 프로토타입 (로드맵용, 데모 대상 아님)
+├── ml/       # 모델 변환 스크립트
+└── docs/     # 화면·API 명세·아키텍처
 ```
 
-YOLO 학습 코드는 별도 폴더(`../gaero`)에 있습니다. 이 저장소는 서비스 코드만 다룹니다.
-
-## 핵심 플로우
-
-산책 시작 → **데모 영상 재생 + 서버 업로드(`/infer/video`)** → 서버가 시각별 탐지
-타임라인 반환(모델 없으면 목) → 재생 시각에 맞춰 "실시간 탐지처럼" 알람 →
-신뢰도 임계값 이상이면 알람 → 사용자가 캡처·민원 문안(Gemini 생성) 확인 후 **승인**
-→ 민원 접수(데모: 모의 접수) → Naver 위험 지도 마커 등록 → 산책 요약 카드 → 기록 축적
-
-> 웹캠 대신 서버로 영상을 올려 분석하는 구조라 온디바이스 카메라 권한이 필요 없다.
-> `web/public/demo-walk.mp4` 를 실제 촬영본으로 교체하면 그대로 데모에 반영된다.
-
-## 빠른 시작 (로컬)
-
-### 1. 서버
+### 로컬 실행
 
 ```bash
-cd server
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # 키가 없어도 전부 폴백으로 동작
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 1) 백엔드 (Docker — best.pt 포함, https://localhost:8443)
+cd server && sh scripts/gen-cert.sh          # 자체 서명 인증서 생성 (certs/)
+# server/.env 에 MODEL_PATH=/srv/models/best.pt (모델 실추론), DATABASE_URL(Supabase) 등
+cd .. && docker compose --env-file server/.env up --build -d
+
+# 2) 웹 (http://localhost:5173)
+cd web && npm install
+cp .env.example .env                         # VITE_API_URL, VITE_NAVER_MAP_CLIENT_ID
+npm run dev
 ```
 
-### 2. 웹
+로컬에서 백엔드에 붙이려면 `web/.env`의 `VITE_API_URL`을 `https://localhost:8443`으로 맞춥니다(자체 서명이라 브라우저 1회 경고는 정상).
 
-```bash
-cd web
-npm install
-cp .env.example .env        # VITE_API_URL, VITE_NAVER_MAP_CLIENT_ID
-npm run dev                 # http://localhost:5173
-```
-
-`VITE_NAVER_MAP_CLIENT_ID` 가 비어 있으면 지도는 폴백 UI 로 표시되고 나머지 플로우는
-그대로 동작합니다. NCP 콘솔 → Maps 에서 Client ID 발급 후 넣으면 실제 지도가 뜹니다.
-
-### 3. Docker + HTTPS(자체 서명)
-
-```bash
-cd server && sh scripts/gen-cert.sh        # server/certs/{cert,key}.pem 생성
-cd .. && docker compose up --build         # https://localhost:8443
-```
-
-웹 `.env` 의 `VITE_API_URL` 을 `https://localhost:8443` 로 맞추면 HTTPS 백엔드로 붙습니다.
-(자체 서명 인증서라 브라우저 1회 경고는 정상.)
-
-### 4. 모델 (파인튜닝 완료 후)
-
-`best.pt` 를 `server/models/` 에 넣고 `.env`(또는 compose 환경변수)에
-`MODEL_PATH=models/best.pt`. 모델이 없는 동안은 **목 타임라인**으로 전체 데모 플로우가
-그대로 동작합니다.
-
-## 배포
+### 배포
 
 | 구성 | 위치 | 방법 |
-|------|------|------|
-| 웹 | Vercel | 저장소 연결, Root Directory=`web`, env `VITE_API_URL`·`VITE_NAVER_MAP_CLIENT_ID` (자동 HTTPS) |
-| 백엔드 | Docker | `server/Dockerfile` + `docker-compose.yml` — **자체 서명 인증서로 HTTPS**(`scripts/gen-cert.sh` → `certs/` 마운트). `SSL_CERTFILE/SSL_KEYFILE` 미지정 시 HTTP 로 떠서 상위(Cloud Run/Railway/Caddy)가 TLS 종료하는 구성도 가능 |
-| DB | Supabase | PostgreSQL URI를 서버 env `DATABASE_URL` 로 주입 (미설정 시 SQLite) |
+|---|---|---|
+| 웹 | **Vercel** | Root Directory=`web`, `vercel --prod`. env: `VITE_API_URL`, `VITE_NAVER_MAP_CLIENT_ID` |
+| 백엔드 | **Docker** | `docker compose --env-file server/.env up --build -d` → `https://localhost:8443` |
+| DB | **Supabase** | `DATABASE_URL`(Transaction Pooler, IPv4)로 주입 |
 
-프론트가 HTTPS(Vercel)면 백엔드도 HTTPS여야 혼합 콘텐츠 차단을 피합니다.
+- 🌐 **웹(라이브)**: https://web-six-theta-f7wm1jo00d.vercel.app
+- 📄 **API 문서(서버 기동 시)**: `https://localhost:8443/docs` (Swagger UI) · `/redoc` · `/openapi.json`
+
+### 동작 확인
+```bash
+curl -k https://localhost:8443/health          # {"status":"ok"}
+curl -k -X POST https://localhost:8443/infer -F image=@server/scripts/sample-damage.jpg
+# 모델 로드 시 {"model":"loaded", ...}  /  없으면 {"model":"absent", ...}(목 모드)
+```
+
+> Windows에서 `git` 체크아웃 시 `server/start.sh`가 CRLF로 바뀌면 컨테이너가 `set: Illegal option -`로 죽을 수 있습니다. LF로 변환하거나 `.gitattributes`에 `*.sh text eol=lf`를 추가하세요.
+
+---
+
+## 5. 팀원별 역할
+
+**팀 OH! (5조)**
+
+| 역할 | 담당 |
+|---|---|
+| 👑 팀장 | 이민형 |
+| 💻 개발 | 이다빈, 조대흠 |
+| 🎨 디자인 | 여아현 |
+| 📋 기획 | 고대웅, 박수호 |
+| 🎤 발표 | 이은아 |
+
+---
 
 ## 문서
-
-- [화면 목록·플로우](docs/SCREENS.md)
-- [작업 분배·일정](docs/TASKS.md)
-- [아키텍처](docs/ARCHITECTURE.md)
-
-## 팀
-
-TECH4GOOD 해커톤 — Paw Patrol Network 팀
+- [화면 목록·플로우](docs/SCREENS.md) · [작업 분배](docs/TASKS.md) · [아키텍처](docs/ARCHITECTURE.md)
+- [API 명세(Markdown)](docs/API-SPEC.md) · [Swagger UI(오프라인 HTML)](docs/api.html)
