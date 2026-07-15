@@ -1,13 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { postWalk } from '../api';
+import { getMarkers, postWalk } from '../api';
 import MiniRouteMap from '../components/MiniRouteMap';
 import { CLASS_KR, DOG_NAME, USER_NAME } from '../config';
 import { useWalkStore } from '../store';
+import type { MapMarkerData } from '../types';
 
 function timeAmPm(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function summaryClassLabel(className: string): string {
+  if (className === 'sidewalk_damaged') return '보도블록 파손';
+  if (className === 'braille_damaged') return '점자블록 파손';
+  return CLASS_KR[className] ?? className;
 }
 
 /** 산책 종료 (113:663 시안) — 자동 저장 후 오늘의 산책 코스 + 발견 타임라인 표시 */
@@ -15,6 +22,16 @@ export default function SummaryPage() {
   const navigate = useNavigate();
   const { route, distanceM, detections, startedAt, endedAt } = useWalkStore();
   const saved = useRef(false);
+  const [existingMarkers, setExistingMarkers] = useState<MapMarkerData[]>([]);
+
+  // 이전 산책에서 신고 완료된 위치도 종료 지도에 함께 보여준다.
+  useEffect(() => {
+    getMarkers()
+      .then((markers) =>
+        setExistingMarkers(markers.filter((marker) => marker.confirmed_count > 0)),
+      )
+      .catch(() => undefined);
+  }, []);
 
   // 시안에는 저장 버튼이 없으므로 진입 시 자동 저장 (서버 불가 시에도 화면은 유지)
   useEffect(() => {
@@ -41,14 +58,38 @@ export default function SummaryPage() {
   };
 
   const reported = detections.filter((d) => d.status === 'reported');
-  const rows = detections
+  const summaryMarkers = [
+    ...existingMarkers.map((marker) => ({ lat: marker.lat, lng: marker.lng })),
+    ...reported.map((d) => ({ lat: d.lat, lng: d.lng })),
+  ].filter(
+    (marker, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.lat.toFixed(4) === marker.lat.toFixed(4) &&
+          candidate.lng.toFixed(4) === marker.lng.toFixed(4),
+      ) === index,
+  );
+  const currentRows = detections
     .filter((d) => d.status !== 'rejected')
-    .slice()
-    .reverse()
     .map((d) => ({
-      label: `${CLASS_KR[d.className] ?? d.className} ${d.status === 'reported' ? '신고 발견' : '발견'}`,
+      label: `${summaryClassLabel(d.className)} ${d.status === 'reported' ? '신고 발견' : '발견'}`,
       time: timeAmPm(d.at),
+      timestamp: new Date(d.at).getTime(),
+      key: `${d.lat.toFixed(4)}:${d.lng.toFixed(4)}`,
     }));
+  const currentKeys = new Set(currentRows.map((row) => row.key));
+  const historicalRows = existingMarkers
+    .filter((marker) => !currentKeys.has(`${marker.lat.toFixed(4)}:${marker.lng.toFixed(4)}`))
+    .map((marker) => ({
+      label: `${summaryClassLabel(marker.class_name)} 신고 발견`,
+      time: timeAmPm(marker.last_seen),
+      timestamp: new Date(marker.last_seen).getTime(),
+      key: `${marker.lat.toFixed(4)}:${marker.lng.toFixed(4)}`,
+    }));
+  // 시안처럼 이번 신고와 최근 기존 신고를 함께, 최대 3건까지 보여준다.
+  const rows = [...currentRows, ...historicalRows]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 3);
 
   return (
     <div className="page" style={{ padding: 0, paddingBottom: 96 }}>
@@ -77,7 +118,7 @@ export default function SummaryPage() {
           <MiniRouteMap
             route={route}
             height={320}
-            markers={reported.map((d) => ({ lat: d.lat, lng: d.lng }))}
+            markers={summaryMarkers}
           />
         </div>
 

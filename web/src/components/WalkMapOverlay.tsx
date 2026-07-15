@@ -18,18 +18,19 @@ const DOG_ICON = `<div style="position:relative;width:64px;height:78px;filter:dr
 const START_ICON = `<img src="/assets/start-dot.svg" style="width:28px;height:28px;display:block"/>`;
 const WARN_ICON = `<div style="font-size:24px">⚠️</div>`;
 // 신고 완료 지점: 코랄 라벨 + X 마커 (시안 '신고 완료 후 표시')
-const REPORTED_ICON = `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;white-space:nowrap;font-family:Pretendard,sans-serif">
-  <span style="background:${CORAL};color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.2)">보행 장애물 신고 완료</span>
-  <span style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid ${CORAL};color:${CORAL};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.2)">✕</span>
+const REPORTED_ICON = `<div style="position:relative;width:132px;height:48px;white-space:nowrap;font-family:Pretendard,sans-serif">
+  <span style="position:absolute;left:0;top:0;width:132px;text-align:center;background:${CORAL};color:#fff;font-size:10px;font-weight:600;padding:3px 6px;border-radius:999px;box-shadow:0 2px 5px rgba(0,0,0,.16)">보행 장애물 신고 완료</span>
+  <span style="position:absolute;left:54px;top:24px;width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid ${CORAL};color:${CORAL};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,.16)">✕</span>
 </div>`;
 
 interface Props {
   route: RoutePoint[];
   detections: SessionDetection[];
+  existingMarkers?: { lat: number; lng: number }[];
 }
 
 /** 산책 중 지도 뷰 (Naver Maps) — 경로 폴리라인 + 현재 위치(강아지) + 위험 마커 */
-export default function WalkMapOverlay({ route, detections }: Props) {
+export default function WalkMapOverlay({ route, detections, existingMarkers = [] }: Props) {
   const mapState = useNaverMaps();
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<naver.maps.Map | null>(null);
@@ -64,6 +65,9 @@ export default function WalkMapOverlay({ route, detections }: Props) {
     if (mapState !== 'ready' || !map || !window.naver?.maps) return;
     const n = window.naver.maps;
     const path = route.map((p) => new n.LatLng(p.lat, p.lng));
+    const reportedPositions = detections
+      .filter((d) => d.status === 'reported')
+      .map((d) => new n.LatLng(d.lat, d.lng));
 
     if (path.length > 1) {
       if (!polylineRef.current) {
@@ -102,28 +106,54 @@ export default function WalkMapOverlay({ route, detections }: Props) {
       } else {
         dogRef.current.setPosition(last);
       }
-      map.setCenter(last);
+      if (reportedPositions.length > 0) {
+        // 신고 직후 현재 강아지 위치와 완료 마커가 한 화면에 함께 보이도록 한다.
+        // 하단 컨트롤 독과 상단 토글을 피해 여백을 넉넉하게 둔다.
+        const bounds = new n.LatLngBounds(last, last);
+        reportedPositions.forEach((position) => bounds.extend(position));
+        map.fitBounds(bounds, { top: 96, right: 64, bottom: 250, left: 64 });
+      } else {
+        map.setCenter(last);
+      }
     }
 
-    // 위험 마커 재구성 (rejected 제외, 신고 완료는 시안 코랄 라벨 마커)
+    // 위험 마커 재구성 (이전 신고 위치 + 현재 산책 탐지)
     warnRef.current.forEach((m) => m.setMap(null));
-    warnRef.current = detections
+    const currentReportedKeys = new Set(
+      detections
+        .filter((d) => d.status === 'reported')
+        .map((d) => `${d.lat.toFixed(4)}:${d.lng.toFixed(4)}`),
+    );
+    const historical = existingMarkers
+      .filter((m) => !currentReportedKeys.has(`${m.lat.toFixed(4)}:${m.lng.toFixed(4)}`))
+      .map(
+        (m) =>
+          new n.Marker({
+            position: new n.LatLng(m.lat, m.lng),
+            map,
+            // 앵커(66,36)가 작은 X 원의 정중앙이므로 실제 좌표가 경로 위에 정확히 놓인다.
+            icon: { content: REPORTED_ICON, anchor: new n.Point(66, 36) },
+            zIndex: 40,
+          }),
+      );
+    const current = detections
       .filter((dn) => dn.status !== 'rejected')
       .map((dn) =>
         dn.status === 'reported'
           ? new n.Marker({
               position: new n.LatLng(dn.lat, dn.lng),
               map,
-              icon: { content: REPORTED_ICON, anchor: new n.Point(60, 48) },
+              icon: { content: REPORTED_ICON, anchor: new n.Point(66, 36) },
               zIndex: 50,
             })
           : new n.Marker({
               position: new n.LatLng(dn.lat, dn.lng),
               map,
               icon: { content: WARN_ICON, anchor: new n.Point(12, 12) },
-            }),
+          }),
       );
-  }, [mapState, route, detections]);
+    warnRef.current = [...historical, ...current];
+  }, [mapState, route, detections, existingMarkers]);
 
   if (mapState !== 'ready') return <MapFallback state={mapState} />;
   return <div ref={elRef} style={{ height: '100%' }} />;

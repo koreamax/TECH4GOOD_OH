@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import { inferVideo, postDetection } from '../api';
+import { getMarkers, inferVideo, postDetection } from '../api';
 import DetectionModal from '../components/DetectionModal';
 import SegmentPill from '../components/SegmentPill';
 import WalkMapOverlay from '../components/WalkMapOverlay';
@@ -16,16 +16,27 @@ import {
   DETECTION_COOLDOWN_MS,
   USE_DEMO_GPS,
 } from '../config';
+import { findRecommendedCourse } from '../courseData';
 import { MockDetector } from '../detection/mock';
 import { formatDistance, formatDuration, SEOUL } from '../geo';
 import { useWalkStore } from '../store';
 import type { VideoTimelineItem } from '../types';
+
+const DEMO_WALK_INDEX_KEY = 'tech4good-demo-walk-index';
+
+function modelLabel(className: string): string {
+  if (className === 'sidewalk_damaged') return 'damaged_sidewalk';
+  if (className === 'braille_damaged') return 'damaged_braille';
+  return className;
+}
 
 /** 산책 화면 (S-10) — 시작 → 지도 뷰/카메라 뷰 토글 + 탐지 알림.
  *  카메라(웹캠) 대신 서버에 영상을 업로드하고, 서버가 돌려준 시각별 타임라인을
  *  영상 재생에 맞춰 "실시간 탐지처럼" 트리거한다. */
 export default function WalkPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedCourse = findRecommendedCourse(searchParams.get('course'));
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null); // 비디오 위 실시간 탐지 오버레이
@@ -37,6 +48,7 @@ export default function WalkPage() {
   const [videoError, setVideoError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [videoSrc, setVideoSrc] = useState(DEMO_NORMAL_VIDEOS[0]); // 현재 카메라 밴드 영상
+  const [existingMarkers, setExistingMarkers] = useState<{ lat: number; lng: number }[]>([]);
 
   const status = useWalkStore((s) => s.status);
   const route = useWalkStore((s) => s.route);
@@ -62,6 +74,8 @@ export default function WalkPage() {
   const videoData = useRef<{ timeline: VideoTimelineItem[]; overlay: VideoTimelineItem[] }[]>([]);
   const activeDetect = useRef(-1); // 현재 재생 중 인식영상 인덱스(-1 = 일반 걷기)
   const routeIdx = useRef(0); // 다음 이동할 경로 인덱스
+  const activeDemoRoute = useRef<[number, number][]>(DEMO_ROUTE);
+  const activeStopIndices = useRef<number[]>(DEMO_STOP_INDICES);
   const normalSeg = useRef(0); // 현재 평시 세그먼트(0·1·2) — 정지 처리 후 증가
   const stoppedRef = useRef(false); // 정지점에서 멈춰 알람 대기 중인지
   const seekTarget = useRef<number | null>(null); // 인식영상 로드 후 시킹할 시각(피크 직전)
@@ -69,6 +83,19 @@ export default function WalkPage() {
   useEffect(() => {
     viewRef.current = view;
   }, [view]);
+
+  // 이전 산책에서 이미 신고된 위치도 다음 산책 지도에 누적 표시한다.
+  useEffect(() => {
+    getMarkers()
+      .then((markers) =>
+        setExistingMarkers(
+          markers
+            .filter((marker) => marker.confirmed_count > 0)
+            .map((marker) => ({ lat: marker.lat, lng: marker.lng })),
+        ),
+      )
+      .catch(() => undefined);
+  }, []);
 
   // 타이머
   useEffect(() => {
@@ -127,14 +154,14 @@ export default function WalkPage() {
           else ctx.lineTo(x, y);
         });
         ctx.closePath();
-        ctx.fillStyle = 'rgba(64,110,255,0.35)';
+        ctx.fillStyle = 'rgba(47,91,255,0.58)';
         ctx.fill();
       }
       ctx.lineWidth = Math.max(2, size * 0.008);
       ctx.strokeStyle = '#2f5bff';
       ctx.strokeRect(gx(b.x1), gy(b.y1), bw, bh);
       const fs = Math.max(14, Math.round(size * 0.055));
-      const text = `${CLASS_KR[item.class_name] ?? item.class_name} ${item.confidence.toFixed(2)}`;
+      const text = `${modelLabel(item.class_name)} ${item.confidence.toFixed(2)}`;
       ctx.font = `600 ${fs}px Pretendard, system-ui, sans-serif`;
       const tw = ctx.measureText(text).width;
       const ly = Math.max(0, gy(b.y1) - fs * 1.4);
@@ -161,7 +188,15 @@ export default function WalkPage() {
         // 박스 없는 이벤트(목 보강 등)는 데모 모드에서 시안 원본 파손 사진으로 폴백.
         let blob: Blob | null = null;
         let annotatedUrl: string | undefined;
-        if (e.item?.box) {
+        const useReferenceFrame =
+          USE_DEMO_GPS && e.item?.t === 4 && e.className === 'sidewalk_damaged';
+        if (useReferenceFrame) {
+          // 제공된 실제 4초 세그멘테이션 결과를 첫 승인 화면에 그대로 사용한다.
+          annotatedUrl = '/assets/detection-sidewalk-t004.jpg';
+          blob = await fetch(annotatedUrl)
+            .then((response) => response.blob())
+            .catch(() => null);
+        } else if (e.item?.box) {
           blob = await captureFrame();
           if (blob) annotatedUrl = (await captureAnnotated(e.item)) ?? undefined;
         }
@@ -275,7 +310,7 @@ export default function WalkPage() {
         else ctx.lineTo(x, y);
       });
       ctx.closePath();
-      ctx.fillStyle = 'rgba(64,110,255,0.35)';
+      ctx.fillStyle = 'rgba(47,91,255,0.58)';
       ctx.fill();
     }
     const x = mx(item.box.x1);
@@ -283,7 +318,7 @@ export default function WalkPage() {
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = '#2f5bff';
     ctx.strokeRect(x, y, mx(item.box.x2) - x, my(item.box.y2) - y);
-    const text = `${CLASS_KR[item.class_name] ?? item.class_name} ${item.confidence.toFixed(2)}`;
+    const text = `${modelLabel(item.class_name)} ${item.confidence.toFixed(2)}`;
     ctx.font = '600 13px Pretendard, system-ui, sans-serif';
     const tw = ctx.measureText(text).width;
     const ly = Math.max(0, y - 20);
@@ -341,12 +376,13 @@ export default function WalkPage() {
   // 경로를 한 스텝 이동. 정지점 인덱스면 멈춰서 인식 시퀀스 시작.
   const walkStep = useCallback(() => {
     const i = routeIdx.current;
-    if (i >= DEMO_ROUTE.length) return; // 완주
-    const [lat, lng] = DEMO_ROUTE[i];
+    const demoRoute = activeDemoRoute.current;
+    if (i >= demoRoute.length) return; // 완주
+    const [lat, lng] = demoRoute[i];
     lastLoc.current = { lat, lng };
     useWalkStore.getState().addRoutePoint(lat, lng);
     routeIdx.current = i + 1;
-    const k = DEMO_STOP_INDICES.indexOf(i);
+    const k = activeStopIndices.current.indexOf(i);
     if (k >= 0) {
       triggerDetectionStop(k);
       return; // 다음 스텝 예약 안 함 → 정지 (모달 처리 후 재개)
@@ -395,7 +431,16 @@ export default function WalkPage() {
     startTimelineLoop();
 
     if (USE_DEMO_GPS) {
-      // 모의 GPS: 경로(석촌호수·인도)를 따라 이동하다 정지점에서 멈춰 인식 시퀀스.
+      // 모의 GPS: 다음 산책마다 시작 지점을 옮겨 새 장애물이 다른 장소에서
+      // 감지되게 하며, 추천 코스에서 진입한 경우 해당 코스 경로를 사용한다.
+      const walkIndex = Number.parseInt(window.localStorage.getItem(DEMO_WALK_INDEX_KEY) ?? '0', 10) || 0;
+      window.localStorage.setItem(DEMO_WALK_INDEX_KEY, String(walkIndex + 1));
+      const routeSource = selectedCourse?.route ?? DEMO_ROUTE;
+      const offset = selectedCourse ? 0 : (walkIndex * 6) % routeSource.length;
+      activeDemoRoute.current = [...routeSource.slice(offset), ...routeSource.slice(0, offset)];
+      const routeScale = Math.max(routeSource.length - 1, 1) / Math.max(DEMO_ROUTE.length - 1, 1);
+      activeStopIndices.current = DEMO_STOP_INDICES.map((index) => Math.round(index * routeScale));
+      // 경로를 따라 이동하다 정지점에서 멈춰 인식 시퀀스를 시작한다.
       walkStep();
     } else {
       // 실제 GPS 추적 (연출 없음) — 첫 인식영상 재생으로 알람 1회 시연.
@@ -437,6 +482,11 @@ export default function WalkPage() {
 
   const currentDetection = detailIndex != null ? (detections[detailIndex] ?? null) : null;
   const reportedCount = detections.filter((d) => d.status === 'reported').length;
+  const closeDetection = () => {
+    // 신고 완료 후에는 곧바로 지도 뷰에서 코랄 완료 마커를 확인하게 한다.
+    if (currentDetection?.status === 'reported') setView(0);
+    setDetailIndex(null);
+  };
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: '#fff', overflow: 'hidden' }}>
@@ -494,7 +544,7 @@ export default function WalkPage() {
       {/* 지도 뷰 오버레이 */}
       {view === 0 && (
         <div style={{ position: 'absolute', inset: 0 }}>
-          <WalkMapOverlay route={route} detections={detections} />
+          <WalkMapOverlay route={route} detections={detections} existingMarkers={existingMarkers} />
         </div>
       )}
 
@@ -537,7 +587,8 @@ export default function WalkPage() {
             position: 'absolute',
             left: 20,
             right: 20,
-            bottom: 176,
+            // 상태 카드·종료 버튼과 하단 탭 바 위에 자연스럽게 쌓인다.
+            bottom: 'calc(252px + env(safe-area-inset-bottom))',
             zIndex: 20,
             display: 'flex',
             alignItems: 'flex-end',
@@ -614,8 +665,11 @@ export default function WalkPage() {
 
       {/* 하단 통계 + 종료 */}
       {!intro && (
-        <div style={{ position: 'absolute', left: 16, right: 16, bottom: 16, zIndex: 20, display: 'grid', gap: 10 }}>
-          <div className="card" style={{ display: 'flex', padding: '12px 0', background: '#fff' }}>
+        <div className="walk-controls">
+          <div
+            className="card"
+            style={{ display: 'flex', padding: '13px 0', background: '#fff', boxShadow: '0 4px 12px rgba(17,24,29,.08)' }}
+          >
             {[
               [formatDuration(elapsedS), '시간'],
               [formatDistance(distanceM), '거리'],
@@ -651,7 +705,8 @@ export default function WalkPage() {
             alignItems: 'center',
             justifyContent: 'center',
             padding: 21,
-            zIndex: 30,
+            // 탭 바까지 함께 딤 처리한다.
+            zIndex: 120,
           }}
         >
           <div
@@ -684,7 +739,16 @@ export default function WalkPage() {
             <img
               src="/assets/illust-camera.svg"
               alt=""
-              style={{ height: 160, objectFit: 'contain', justifySelf: 'center' }}
+              style={{
+                width: 264,
+                height: 159,
+                maxWidth: '82%',
+                objectFit: 'contain',
+                justifySelf: 'center',
+                // 원본 SVG에서 카메라 본체가 장식 전체의 오른쪽에 치우쳐 있어
+                // 본체 렌즈 중심이 모달 정중앙에 오도록 보정한다.
+                transform: 'translateX(-11%)',
+              }}
             />
             <button className="btn" onClick={startSession}>
               확인했어요
@@ -702,7 +766,7 @@ export default function WalkPage() {
             if (detailIndex != null) useWalkStore.getState().updateDetection(detailIndex, patch);
           }}
           onClose={() => {
-            setDetailIndex(null);
+            closeDetection();
             resumeWalk(); // 정지 상태였으면 다음 구간으로 이동 재개
           }}
         />

@@ -43,13 +43,15 @@ export default function MyPage() {
             height: 60,
             borderRadius: '50%',
             background: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 30,
+            overflow: 'hidden',
+            flexShrink: 0,
           }}
         >
-          🐶
+          <img
+            src="/assets/dog-photo.png"
+            alt={`${DOG_NAME} 프로필`}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
         </div>
         <div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>{DOG_NAME}</div>

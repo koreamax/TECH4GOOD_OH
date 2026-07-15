@@ -8,13 +8,9 @@ const ROUTE_BLUE = '#407fff'; // 시안 경로 Blue
 const CORAL = '#fd7565';
 
 // 시안(113:663) 신고 완료 마커: 코랄 라벨 + 코랄 링 안 흰 원 + 에러 아이콘
-const REPORTED_ICON = `<div style="display:flex;flex-direction:column;align-items:center;gap:5px;white-space:nowrap;font-family:Pretendard,sans-serif">
-  <span style="background:${CORAL};color:#fff;font-size:11px;font-weight:500;letter-spacing:-0.22px;padding:4px 6px;border-radius:6px">보행 장애물 신고 완료</span>
-  <span style="width:33px;height:33px;border-radius:50%;background:${CORAL};display:flex;align-items:center;justify-content:center">
-    <span style="width:27px;height:27px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center">
-      <img src="/assets/icon-error-circle.svg" style="width:27px;height:27px"/>
-    </span>
-  </span>
+const REPORTED_ICON = `<div style="position:relative;width:132px;height:48px;white-space:nowrap;font-family:Pretendard,sans-serif">
+  <span style="position:absolute;left:0;top:0;width:132px;text-align:center;background:${CORAL};color:#fff;font-size:10px;font-weight:500;letter-spacing:-0.2px;padding:3px 6px;border-radius:6px">보행 장애물 신고 완료</span>
+  <span style="position:absolute;left:54px;top:24px;width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid ${CORAL};color:${CORAL};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px">✕</span>
 </div>`;
 
 interface Props {
@@ -60,7 +56,8 @@ export default function MiniRouteMap({ route, height = 150, markers = [] }: Prop
         new n.Marker({
           position: new n.LatLng(m.lat, m.lng),
           map,
-          icon: { content: REPORTED_ICON, anchor: new n.Point(60, 55) },
+          // 작은 X 원의 중심이 실제 신고 좌표와 일치해 점선 동선 위에 놓인다.
+          icon: { content: REPORTED_ICON, anchor: new n.Point(66, 36) },
         }),
     );
     const bounds = new n.LatLngBounds(path[0], path[0]);

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getReports, getWalks } from '../api';
 import ReportListItem from '../components/ReportListItem';
 import { DOG_NAME } from '../config';
+import { RECOMMENDED_COURSES } from '../courseData';
 import { formatDistance, formatDurationKr, todayKr } from '../geo';
 import type { Report, Walk } from '../types';
 
@@ -186,8 +187,17 @@ export default function HomePage() {
 
         {tab === 1 && (
           <>
-            {MOCK_COURSES.map((c) => (
-              <CourseCard key={c.title} {...c} reports={0} chip="코스 보기" />
+            {RECOMMENDED_COURSES.map((course) => (
+              <CourseCard
+                key={course.id}
+                photo={course.photo}
+                reports={0}
+                title={course.title}
+                area={course.area}
+                meta={`${course.distance} · ${course.duration} 소요`}
+                chip="코스 보기"
+                onChip={() => navigate(`/courses/${course.id}`)}
+              />
             ))}
             <p style={{ textAlign: 'center', color: 'var(--subtext)', fontSize: 12 }}>
               이웃 반려인들이 걸은 코스를 추천해드려요

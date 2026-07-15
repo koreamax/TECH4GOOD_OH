@@ -177,6 +177,12 @@ button {
 .tabbar a.active {
   color: var(--ink);
 }
+.tabbar.walking a {
+  cursor: default;
+}
+.tabbar.walking a:not(.active) {
+  color: #b8c2ca;
+}
 /* 시안 SVG 아이콘을 mask 로 그려 활성/비활성 색만 바꾼다 */
 .tabbar .icon {
   width: 24px;
@@ -215,4 +221,18 @@ button {
   border-radius: 99px;
   background: #cbd5dc; /* Gray 300 */
   margin: 0 auto 14px;
+}
+
+/* 산책 상태 카드와 종료 버튼을 탭 바 위의 하나의 컨트롤 독으로 묶는다. */
+.walk-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px calc(76px + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -4px 14px rgba(17, 24, 29, 0.06);
 }

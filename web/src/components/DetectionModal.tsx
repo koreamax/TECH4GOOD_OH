@@ -43,6 +43,7 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
   const [editContent, setEditContent] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editType, setEditType] = useState('');
+  const detectionKey = detection ? `${detection.serverId ?? 'local'}:${detection.at}` : '';
 
   // 열리는 즉시 문안을 미리 생성 → 확인-2 진입 시 대기 없이 표시.
   // 의존성은 detection 객체가 아니라 고유 식별자(at)로 둔다 — 같은 탐지의 상태 갱신
@@ -73,13 +74,18 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
     })
       .then(setDraft)
       .catch(() => setDraft(fallback)); // 서버 불가 시에도 승인 플로우 무중단
+    // status/receiptNo 갱신으로 detection 객체만 새로 만들어지는 경우에는
+    // 현재 단계(done 포함)를 초기화하지 않는다. 실제로 다른 탐지를 열 때만 재설정한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detection?.at]); // 고유 식별자 기준 — 상태 갱신(신고 완료)에는 리셋 안 함
+  }, [detectionKey]);
 
   if (!detection) return null;
 
   // 승인 화면에는 박스·마스크가 그려진 주석 프레임을 우선 표시(있으면).
   const displayUrl = detection.annotatedUrl ?? detection.imageUrl;
+  const captureObjectPosition = displayUrl.includes('detection-sidewalk-t004')
+    ? 'center 35%'
+    : 'center';
 
   const reject = () => {
     if (detection.serverId != null) {
@@ -177,9 +183,38 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
     );
   }
 
+  const isReview = step === 'review';
+  const isEdit = step === 'edit';
+
   return (
-    <div className="sheet-backdrop">
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="sheet-backdrop"
+      style={
+        isEdit
+          ? { background: '#fff', alignItems: 'stretch' }
+          : isReview
+            ? { alignItems: 'center', justifyContent: 'center', padding: 20 }
+            : undefined
+      }
+    >
+      <div
+        className="sheet"
+        onClick={(e) => e.stopPropagation()}
+        style={
+          isEdit
+            ? { height: '100%', maxHeight: 'none', borderRadius: 0, padding: '20px 20px 28px' }
+            : isReview
+              ? {
+                  width: 360,
+                  maxWidth: '100%',
+                  maxHeight: '88%',
+                  borderRadius: 12,
+                  padding: 18,
+                  boxShadow: '0 4px 10px rgba(0,0,0,.05)',
+                }
+              : undefined
+        }
+      >
         {step === 'verify' && (
           <>
             {/* 확인-1 (100:2080) */}
@@ -204,7 +239,13 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               <img
                 src={displayUrl}
                 alt="탐지 캡처"
-                style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
+                style={{
+                  width: '100%',
+                  height: 140,
+                  objectFit: 'cover',
+                  objectPosition: captureObjectPosition,
+                  borderRadius: 8,
+                }}
               />
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingBottom: 4 }}>
@@ -263,7 +304,13 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
                 <img
                   src={displayUrl}
                   alt="탐지 캡처"
-                  style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
+                  style={{
+                    width: '100%',
+                    height: 140,
+                    objectFit: 'cover',
+                    objectPosition: captureObjectPosition,
+                    borderRadius: 8,
+                  }}
                 />
               )}
               <button
@@ -341,7 +388,14 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               <img
                 src={displayUrl}
                 alt="탐지 캡처"
-                style={{ width: 'calc(100% + 40px)', margin: '12px -20px 0', height: 200, objectFit: 'cover', display: 'block' }}
+                style={{
+                  width: 'calc(100% + 40px)',
+                  margin: '12px -20px 0',
+                  height: 200,
+                  objectFit: 'cover',
+                  objectPosition: captureObjectPosition,
+                  display: 'block',
+                }}
               />
             )}
             <label style={label}>
