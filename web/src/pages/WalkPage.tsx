@@ -183,6 +183,11 @@ export default function WalkPage() {
       timeline.current = [...result.detections].sort((a, b) => a.t - b.t);
       tlPtr.current = 0;
       startTimelineLoop();
+      if (!timeline.current.some((d) => d.confidence >= ALERT_CONFIDENCE_THRESHOLD)) {
+        // 알람 임계값을 넘는 실탐지가 없으면 목 탐지로 보강 — 데모 무중단
+        // (임계값 미만 실탐지는 타임라인이 그대로 조용히 축적)
+        mock.current.start((e) => handleDetection(e));
+      }
     } catch {
       // 서버 불가 시 로컬 목 탐지로 폴백 (플로우 무중단)
       mock.current.start((e) => handleDetection(e));

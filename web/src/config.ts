@@ -40,7 +40,7 @@ export const USER_NAME = '콩이 보호자';
 // ===== 모의 GPS (데모: 실제 위치 대신 사전 정의 경로를 따라 이동) =====
 
 export const USE_DEMO_GPS: boolean = (import.meta.env.VITE_DEMO_GPS ?? 'true') === 'true';
-export const DEMO_GPS_STEP_MS = 1200;
+export const DEMO_GPS_STEP_MS = 2800; // 천천히 걷기 (사용자 요청)
 
 // 석촌호수 동호 한 바퀴 (lat, lng)
 export const DEMO_ROUTE: [number, number][] = [
