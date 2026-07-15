@@ -39,12 +39,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 모바일 프레임 (데스크톱에서도 폰 비율 유지) */
+/* 모바일 프레임 (데스크톱에서도 폰 비율 유지)
+   height 고정 = 내부(.page)만 스크롤 → CTA·탭바가 항상 플로팅 */
 .frame {
   position: relative;
   max-width: 430px;
   margin: 0 auto;
-  min-height: 100dvh;
+  height: 100dvh;
   background: #fff;
   display: flex;
   flex-direction: column;
