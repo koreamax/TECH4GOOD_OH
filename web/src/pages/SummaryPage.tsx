@@ -1,121 +1,136 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { postWalk } from '../api';
 import MiniRouteMap from '../components/MiniRouteMap';
-import { DOG_NAME, USER_NAME } from '../config';
-import { formatDistance, formatDurationKr } from '../geo';
+import { CLASS_KR, DOG_NAME, USER_NAME } from '../config';
 import { useWalkStore } from '../store';
 
-/** 산책 종료 요약 (S-14) — 나이키 러닝 스타일 카드 */
+function timeAmPm(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+/** 산책 종료 (113:663 시안) — 자동 저장 후 오늘의 산책 코스 + 발견 타임라인 표시 */
 export default function SummaryPage() {
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
   const { route, distanceM, detections, startedAt, endedAt } = useWalkStore();
-  const [dogPhoto, setDogPhoto] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saved = useRef(false);
 
-  const durationS =
-    startedAt && endedAt
-      ? Math.max(0, (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-      : 0;
-  const reportedCount = detections.filter((d) => d.status === 'reported').length;
+  // 시안에는 저장 버튼이 없으므로 진입 시 자동 저장 (서버 불가 시에도 화면은 유지)
+  useEffect(() => {
+    if (saved.current || route.length === 0) return;
+    saved.current = true;
+    const durationS =
+      startedAt && endedAt
+        ? Math.max(0, (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+        : 0;
+    postWalk({
+      route,
+      startedAt: startedAt ?? new Date().toISOString(),
+      endedAt: endedAt ?? new Date().toISOString(),
+      distanceM: Math.round(distanceM),
+      durationS: Math.round(durationS),
+      detectionIds: detections.map((d) => d.serverId).filter((id): id is number => id != null),
+      userName: USER_NAME,
+    }).catch((e) => console.warn('산책 저장 실패:', e));
+  }, [route, distanceM, detections, startedAt, endedAt]);
 
   const leave = () => {
     useWalkStore.getState().reset();
     navigate('/', { replace: true });
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      await postWalk({
-        route,
-        startedAt: startedAt ?? new Date().toISOString(),
-        endedAt: endedAt ?? new Date().toISOString(),
-        distanceM: Math.round(distanceM),
-        durationS: Math.round(durationS),
-        detectionIds: detections.map((d) => d.serverId).filter((id): id is number => id != null),
-        userName: USER_NAME,
-        dogPhoto,
-      });
-      leave();
-    } catch (e) {
-      alert(`저장 실패 — 서버(VITE_API_URL)를 확인해주세요.\n${e instanceof Error ? e.message : ''}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const stats: [string, string][] = [
-    [formatDistance(distanceM), '거리'],
-    [formatDurationKr(durationS), '시간'],
-    [String(detections.length), '발견'],
-    [String(reportedCount), '신고'],
-  ];
+  const reported = detections.filter((d) => d.status === 'reported');
+  const rows = detections
+    .filter((d) => d.status !== 'rejected')
+    .slice()
+    .reverse()
+    .map((d) => ({
+      label: `${CLASS_KR[d.className] ?? d.className} ${d.status === 'reported' ? '신고 발견' : '발견'}`,
+      time: timeAmPm(d.at),
+    }));
 
   return (
-    <div className="page" style={{ paddingBottom: 24 }}>
-      <h1 style={{ fontSize: 24, marginTop: 8 }}>산책 완료! 🐾</h1>
-      <p style={{ color: 'var(--subtext)', fontSize: 14, margin: '6px 0 18px' }}>
-        {DOG_NAME}와 함께한 오늘의 순찰 기록이에요
-      </p>
-
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <MiniRouteMap route={route} height={200} />
+    <div className="page" style={{ padding: 0, paddingBottom: 96 }}>
+      {/* 상단 ✕ */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px' }}>
+        <button onClick={leave} style={{ fontSize: 20, color: 'var(--ink)', padding: 4 }}>
+          ✕
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 16 }}>
-        {stats.map(([value, label], i) => (
-          <div key={label} className="card" style={{ textAlign: 'center', padding: '14px 4px' }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: i === 3 && reportedCount > 0 ? 'var(--accent)' : 'var(--text)' }}>
-              {value}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--subtext)', marginTop: 3 }}>{label}</div>
-          </div>
-        ))}
+      {/* 타이틀 — Display SB 22 + Body R 16 */}
+      <div style={{ padding: '10px 20px', display: 'grid', gap: 4 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.4 }}>
+          {DOG_NAME}와의 오늘 산책이 종료되었어요 🐾
+        </h1>
+        <p style={{ fontSize: 16, fontWeight: 400, color: 'var(--gray600)', lineHeight: 1.4 }}>
+          즐거운 산책과 함께 우리 동네 안전에도 기여했어요
+        </p>
       </div>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => setDogPhoto(e.target.files?.[0] ?? null)}
-      />
-      <button
-        onClick={() => fileRef.current?.click()}
-        className="card"
-        style={{
-          width: '100%',
-          margin: '16px 0 20px',
-          borderStyle: 'dashed',
-          overflow: 'hidden',
-          padding: dogPhoto ? 0 : '28px 0',
-        }}
-      >
-        {dogPhoto ? (
-          <img
-            src={URL.createObjectURL(dogPhoto)}
-            alt="강아지 사진"
-            style={{ width: '100%', height: 180, objectFit: 'cover', display: 'block' }}
+      <div style={{ padding: '24px 20px 0', display: 'grid', gap: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>오늘의 산책 코스</h2>
+
+        {/* 경로 + 신고 완료 마커 지도 (r16, h320) */}
+        <div style={{ borderRadius: 16, overflow: 'hidden' }}>
+          <MiniRouteMap
+            route={route}
+            height={320}
+            markers={reported.map((d) => ({ lat: d.lat, lng: d.lng }))}
           />
-        ) : (
-          <span style={{ color: 'var(--subtext)', fontSize: 13 }}>
-            📷 오늘의 {DOG_NAME} 사진 남기기
-          </span>
-        )}
-      </button>
+        </div>
 
-      <button className="btn" onClick={save} disabled={saving}>
-        {saving ? '저장 중…' : '기록 저장하기'}
-      </button>
-      <button
-        onClick={leave}
-        style={{ width: '100%', padding: 14, color: 'var(--subtext)', fontSize: 13 }}
-      >
-        저장하지 않고 나가기
-      </button>
+        {/* 발견 타임라인 — bg #F2F5F6, 코랄 도트 + 점선 연결 */}
+        {rows.length > 0 && (
+          <div style={{ background: '#f2f5f6', borderRadius: 8, padding: '20px 16px' }}>
+            <div style={{ display: 'grid', gap: 0 }}>
+              {rows.map((row, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8 }}>
+                  {/* 도트 + 연결 점선 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 20 }}>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        background: 'var(--accent)',
+                        marginTop: 6,
+                        flexShrink: 0,
+                      }}
+                    />
+                    {i < rows.length - 1 && (
+                      <span
+                        style={{
+                          flex: 1,
+                          borderLeft: '2px dotted #f9b0a7',
+                          margin: '4px 0',
+                          minHeight: 16,
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      paddingBottom: i < rows.length - 1 ? 16 : 0,
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.28px' }}>
+                      {row.label}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--gray500)', letterSpacing: '-0.28px' }}>
+                      {row.time}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

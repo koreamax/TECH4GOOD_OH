@@ -10,16 +10,15 @@ interface Props {
   onClose: () => void;
 }
 
-/** 장애물 감지 플로우 (피그마 시안 기준 4단계)
- *  verify(확인-1: 감지오류/신고하기) → review(확인-2: 안전신문고 문안 검토)
- *  → edit(상세 수정) → done(신고 완료)                                    */
+/** 장애물 감지 플로우 (피그마 시안 4단계)
+ *  verify(확인-1) → review(확인-2 문안 검토) → edit(상세 수정) → done(신고 완료 모달) */
 type Step = 'verify' | 'review' | 'edit' | 'done';
 
 const field: React.CSSProperties = {
   width: '100%',
   padding: '12px 14px',
   border: '1px solid var(--border)',
-  borderRadius: 10,
+  borderRadius: 8,
   fontSize: 14,
   fontFamily: 'inherit',
   background: '#fff',
@@ -28,7 +27,7 @@ const field: React.CSSProperties = {
 const label: React.CSSProperties = {
   display: 'block',
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   margin: '14px 0 6px',
 };
 
@@ -45,7 +44,7 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
   const [editAddress, setEditAddress] = useState('');
   const [editType, setEditType] = useState('');
 
-  // 열리는 즉시 문안을 미리 생성해서 확인-2 진입 시 대기 없이 보여준다
+  // 열리는 즉시 문안을 미리 생성 → 확인-2 진입 시 대기 없이 표시
   useEffect(() => {
     if (!detection) return;
     setStep('verify');
@@ -122,22 +121,75 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
     setStep('review');
   };
 
-  return (
-    <div className="sheet-backdrop" onClick={step === 'done' ? onClose : undefined}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        {step === 'verify' && (
-          <>
-            <div className="grabber" />
+  // ===== 신고 완료 (100:2869) — 중앙 모달 + 일러스트 =====
+  if (step === 'done') {
+    return (
+      <div
+        className="sheet-backdrop"
+        style={{ alignItems: 'center', justifyContent: 'center', padding: 21 }}
+        onClick={onClose}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: '24px 18px',
+            width: 360,
+            maxWidth: '100%',
+            display: 'grid',
+            gap: 18,
+            boxShadow: '0 4px 10px rgba(0,0,0,.05)',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 18 }}>
-                <span style={{ color: 'var(--accent)' }}>&#9888;</span> 보행 장애물이
-                감지되었어요!
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+                신고가 완료되었어요!
               </h2>
-              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--subtext)' }}>
+              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--ink)' }}>
                 ✕
               </button>
             </div>
-            <p style={{ fontSize: 13, color: 'var(--subtext)', lineHeight: 1.6, margin: '8px 0 14px' }}>
+            <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--gray500)', lineHeight: 1.4, letterSpacing: '-0.28px' }}>
+              발견한 위험 요소가 안전신문고에 전달되었어요.
+              <br />
+              당신의 산책이 더 안전한 도시를 만들고 있어요.
+            </p>
+          </div>
+          <img
+            src="/assets/illust-report-done.svg"
+            alt=""
+            style={{ height: 160, objectFit: 'contain', justifySelf: 'center' }}
+          />
+          <button className="btn" onClick={onClose}>
+            확인했어요
+            <img src="/assets/logo-paw.svg" alt="" width={16} height={16} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sheet-backdrop">
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        {step === 'verify' && (
+          <>
+            {/* 확인-1 (100:2080) */}
+            <div className="grabber" />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <img src="/assets/notice-red.svg" alt="" width={22} height={22} />
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+                  보행 장애물이 감지되었어요!
+                </h2>
+              </span>
+              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--ink)' }}>
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--gray500)', lineHeight: 1.4, letterSpacing: '-0.28px', margin: '4px 0 18px' }}>
               앞쪽 산책 경로에서 위험 요소가 발견되었어요.
               <br />
               확인 후 신고하면 안전신문고를 통해 우리 지역에 전달돼요.
@@ -146,14 +198,38 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               <img
                 src={detection.imageUrl}
                 alt="탐지 캡처"
-                style={{ width: '100%', height: 220, objectFit: 'cover', borderRadius: 12 }}
+                style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
               />
             )}
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn ghost" style={{ flex: 1 }} onClick={reject}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingBottom: 4 }}>
+              <button
+                onClick={reject}
+                style={{
+                  width: 120,
+                  padding: '14px 10px',
+                  borderRadius: 8,
+                  background: '#e3e8ec',
+                  color: 'var(--gray600)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  letterSpacing: '-0.28px',
+                }}
+              >
                 감지 오류
               </button>
-              <button className="btn accent" style={{ flex: 2 }} onClick={() => setStep('review')}>
+              <button
+                onClick={() => setStep('review')}
+                style={{
+                  flex: 1,
+                  padding: '14px 10px',
+                  borderRadius: 8,
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  letterSpacing: '-0.28px',
+                }}
+              >
                 위험 요소 신고하기
               </button>
             </div>
@@ -162,13 +238,16 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
 
         {step === 'review' && (
           <>
+            {/* 확인-2 (100:2182) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 18 }}>안전신문고 신고 내용을 확인해주세요</h2>
-              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--subtext)' }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+                안전신문고 신고 내용을 확인해주세요
+              </h2>
+              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--ink)' }}>
                 ✕
               </button>
             </div>
-            <p style={{ fontSize: 13, color: 'var(--subtext)', lineHeight: 1.6, margin: '8px 0 14px' }}>
+            <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--gray500)', lineHeight: 1.4, letterSpacing: '-0.28px', margin: '4px 0 14px' }}>
               AI가 감지한 정보를 바탕으로 신고 내용을 작성했어요.
               <br />
               제출 전 마지막으로 보호자님의 검토가 필요해요.
@@ -178,7 +257,7 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
                 <img
                   src={detection.imageUrl}
                   alt="탐지 캡처"
-                  style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12 }}
+                  style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
                 />
               )}
               <button
@@ -188,26 +267,26 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
                   position: 'absolute',
                   right: 10,
                   bottom: 10,
-                  background: 'rgba(0,0,0,.7)',
+                  background: 'rgba(17,24,29,.75)',
                   color: '#fff',
                   borderRadius: 999,
                   padding: '7px 12px',
                   fontSize: 12,
-                  fontWeight: 600,
+                  fontWeight: 500,
                 }}
               >
                 ✏️ 신고 내용 상세 수정
               </button>
             </div>
             {!draft ? (
-              <p style={{ textAlign: 'center', color: 'var(--subtext)', padding: '24px 0' }}>
+              <p style={{ textAlign: 'center', color: 'var(--subtext)', padding: '24px 0', fontSize: 14 }}>
                 ✍️ AI가 신고 내용을 작성하고 있어요…
               </p>
             ) : (
               <div
                 style={{
-                  background: '#F4F7F6',
-                  borderRadius: 12,
+                  background: '#f2f5f6',
+                  borderRadius: 8,
                   padding: 16,
                   marginTop: 14,
                   fontSize: 14,
@@ -217,12 +296,12 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
                   lineHeight: 1.5,
                 }}
               >
-                <b>발생지역</b>
-                <span>{draft.address}</span>
-                <b>제목</b>
-                <span>{draft.title}</span>
-                <b>신고내용</b>
-                <span>{draft.content}</span>
+                <b style={{ fontWeight: 600 }}>발생지역</b>
+                <span style={{ color: 'var(--gray600)' }}>{draft.address}</span>
+                <b style={{ fontWeight: 600 }}>제목</b>
+                <span style={{ color: 'var(--gray600)' }}>{draft.title}</span>
+                <b style={{ fontWeight: 600 }}>신고내용</b>
+                <span style={{ color: 'var(--gray600)' }}>{draft.content}</span>
               </div>
             )}
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 10 }}>{error}</p>}
@@ -232,19 +311,23 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               onClick={submit}
               disabled={!draft || reporting}
             >
-              {reporting ? '제출 중…' : '제출할게요 🐾'}
+              {reporting ? '제출 중…' : '제출할게요'}
+              <img src="/assets/logo-paw.svg" alt="" width={16} height={16} />
             </button>
           </>
         )}
 
         {step === 'edit' && (
           <>
+            {/* 신고 내용 상세 수정 (100:2324) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button onClick={() => setStep('review')} style={{ fontSize: 20 }}>
                 ‹
               </button>
-              <h2 style={{ fontSize: 17, flex: 1 }}>신고 내용 상세 수정</h2>
-              <button onClick={() => setStep('review')} style={{ fontSize: 18, color: 'var(--subtext)' }}>
+              <h2 style={{ fontSize: 17, fontWeight: 600, flex: 1, textAlign: 'center' }}>
+                신고 내용 상세 수정
+              </h2>
+              <button onClick={() => setStep('review')} style={{ fontSize: 18, color: 'var(--ink)' }}>
                 ✕
               </button>
             </div>
@@ -252,7 +335,7 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               <img
                 src={detection.imageUrl}
                 alt="탐지 캡처"
-                style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 12, marginTop: 12 }}
+                style={{ width: 'calc(100% + 40px)', margin: '12px -20px 0', height: 200, objectFit: 'cover', display: 'block' }}
               />
             )}
             <label style={label}>
@@ -284,6 +367,14 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
             />
+            <div style={{ display: 'flex', gap: 14, marginTop: 14, fontSize: 13 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 }}>
+                <input type="checkbox" defaultChecked style={{ accentColor: 'var(--ink)' }} /> 추천 단어
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--subtext)' }}>
+                <input type="checkbox" disabled /> 주민점검신청제
+              </label>
+            </div>
             <label style={label}>
               휴대전화
               <Req />
@@ -293,44 +384,10 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               인증번호
               <Req />
             </label>
-            <input style={field} placeholder="숫자 6자리" inputMode="numeric" />
-            <p style={{ fontSize: 11, color: 'var(--subtext)', marginTop: 8 }}>
-              휴대전화 인증은 안전신문고 정식 연동 시 활성화됩니다 (데모에서는 생략).
-            </p>
-            <button className="btn accent" style={{ marginTop: 14 }} onClick={applyEdit}>
-              수정했어요 🐾
-            </button>
-          </>
-        )}
-
-        {step === 'done' && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 18 }}>신고가 완료되었어요!</h2>
-              <button onClick={onClose} style={{ fontSize: 18, color: 'var(--subtext)' }}>
-                ✕
-              </button>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--subtext)', lineHeight: 1.6, margin: '8px 0 14px' }}>
-              발견한 위험 요소가 안전신문고에 전달되었어요.
-              <br />
-              당신의 산책이 더 안전한 도시를 만들고 있어요.
-            </p>
-            {detection.imageUrl && (
-              <img
-                src={detection.imageUrl}
-                alt="신고 캡처"
-                style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12 }}
-              />
-            )}
-            {detection.receiptNo && (
-              <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--subtext)', marginTop: 12 }}>
-                접수번호 <b style={{ color: 'var(--text)' }}>{detection.receiptNo}</b> · 처리 현황은
-                신고 현황 탭에서
-              </p>
-            )}
-            <button className="btn" style={{ marginTop: 16 }} onClick={onClose}>
-              확인했어요 🐾
+            <input style={field} placeholder="010-0000-0000" inputMode="numeric" />
+            <button className="btn accent" style={{ marginTop: 18 }} onClick={applyEdit}>
+              수정했어요
+              <img src="/assets/logo-paw.svg" alt="" width={16} height={16} />
             </button>
           </>
         )}

@@ -8,8 +8,11 @@ import WalkMapOverlay from '../components/WalkMapOverlay';
 import {
   ALERT_CONFIDENCE_THRESHOLD,
   CLASS_KR,
+  DEMO_GPS_STEP_MS,
+  DEMO_ROUTE,
   DEMO_VIDEO,
   DETECTION_COOLDOWN_MS,
+  USE_DEMO_GPS,
 } from '../config';
 import { MockDetector } from '../detection/mock';
 import { formatDistance, formatDuration, SEOUL } from '../geo';
@@ -38,6 +41,7 @@ export default function WalkPage() {
   const pendingAlertIndex = useWalkStore((s) => s.pendingAlertIndex);
 
   const watchId = useRef<number | null>(null);
+  const demoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mock = useRef(new MockDetector());
   const timeline = useRef<VideoTimelineItem[]>([]);
   const tlPtr = useRef(0);
@@ -105,6 +109,7 @@ export default function WalkPage() {
             imageUrl: blob ? URL.createObjectURL(blob) : '',
             imageBlob: blob,
             status: 'pending',
+            at: new Date().toISOString(),
           },
           alert, // 임계값 미만이면 알람 없이 조용히 축적 (선 승인 게이트)
         );
@@ -135,16 +140,30 @@ export default function WalkPage() {
     setIntro(false);
     useWalkStore.getState().startWalk();
 
-    // GPS (실제 위치 추적)
-    const onPos = (p: GeolocationPosition) => {
-      lastLoc.current = { lat: p.coords.latitude, lng: p.coords.longitude };
-      useWalkStore.getState().addRoutePoint(p.coords.latitude, p.coords.longitude);
-    };
-    navigator.geolocation?.getCurrentPosition(onPos, () => undefined, { enableHighAccuracy: true });
-    watchId.current =
-      navigator.geolocation?.watchPosition(onPos, () => undefined, {
-        enableHighAccuracy: true,
-      }) ?? null;
+    if (USE_DEMO_GPS) {
+      // 모의 GPS: 사전 정의 경로(석촌호수)를 따라 강아지 핀이 이동 (데모 확정 방식)
+      let idx = 0;
+      const step = () => {
+        if (idx >= DEMO_ROUTE.length) return;
+        const [lat, lng] = DEMO_ROUTE[idx];
+        idx += 1;
+        lastLoc.current = { lat, lng };
+        useWalkStore.getState().addRoutePoint(lat, lng);
+      };
+      step(); // 시작 지점 즉시 표시
+      demoTimer.current = setInterval(step, DEMO_GPS_STEP_MS);
+    } else {
+      // 실제 GPS 추적
+      const onPos = (p: GeolocationPosition) => {
+        lastLoc.current = { lat: p.coords.latitude, lng: p.coords.longitude };
+        useWalkStore.getState().addRoutePoint(p.coords.latitude, p.coords.longitude);
+      };
+      navigator.geolocation?.getCurrentPosition(onPos, () => undefined, { enableHighAccuracy: true });
+      watchId.current =
+        navigator.geolocation?.watchPosition(onPos, () => undefined, {
+          enableHighAccuracy: true,
+        }) ?? null;
+    }
 
     // 데모 영상 재생 시작 (사용자 클릭 제스처 컨텍스트라 자동재생 허용)
     const v = videoRef.current;
@@ -170,6 +189,8 @@ export default function WalkPage() {
   const stopSensors = useCallback(() => {
     if (watchId.current != null) navigator.geolocation?.clearWatch(watchId.current);
     watchId.current = null;
+    if (demoTimer.current) clearInterval(demoTimer.current);
+    demoTimer.current = null;
     mock.current.stop();
     if (tlTimer.current) clearInterval(tlTimer.current);
     tlTimer.current = null;
@@ -189,8 +210,9 @@ export default function WalkPage() {
   const reportedCount = detections.filter((d) => d.status === 'reported').length;
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#000', overflow: 'hidden' }}>
-      {/* 영상은 항상 재생 (지도 뷰일 때도 백그라운드 프레임 캡처용) */}
+    <div style={{ position: 'absolute', inset: 0, background: '#fff', overflow: 'hidden' }}>
+      {/* 영상은 항상 재생 (지도 뷰일 때도 백그라운드 프레임 캡처용).
+          시안 카메라 뷰 = 흰 배경 + 중앙 밴드 */}
       <video
         ref={videoRef}
         src={DEMO_VIDEO}
@@ -199,7 +221,14 @@ export default function WalkPage() {
         loop
         preload="auto"
         onError={() => setVideoError(true)}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '100%',
+          height: '46%',
+          objectFit: 'cover',
+        }}
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       {videoError && view === 1 && (
@@ -357,34 +386,55 @@ export default function WalkPage() {
         </div>
       )}
 
-      {/* 산책 시작 모달 */}
+      {/* 산책 시작 모달 (85:834 시안 원본) */}
       {intro && (
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'var(--dim)',
+            background: 'rgba(6,6,6,0.5)',
             display: 'flex',
             alignItems: 'center',
-            padding: 24,
+            justifyContent: 'center',
+            padding: 21,
             zIndex: 30,
           }}
         >
-          <div style={{ background: '#fff', borderRadius: 20, padding: 22, width: '100%', position: 'relative' }}>
-            <button
-              onClick={() => navigate(-1)}
-              style={{ position: 'absolute', top: 14, right: 14, color: 'var(--subtext)', fontSize: 16 }}
-            >
-              ✕
-            </button>
-            <h2 style={{ fontSize: 18, marginBottom: 10 }}>카메라가 켜졌어요!</h2>
-            <p style={{ fontSize: 13, color: 'var(--subtext)', lineHeight: 1.6, marginBottom: 56 }}>
-              산책 중 발견한 우리 동네 위험 요소를 신고하면
-              <br />
-              다른 산책자와 이웃의 안전한 이동에 도움이 됩니다.
-            </p>
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              padding: '24px 18px',
+              width: 360,
+              maxWidth: '100%',
+              display: 'grid',
+              gap: 18,
+              boxShadow: '0 4px 10px rgba(0,0,0,.05)',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+                  카메라가 켜졌어요!
+                </h2>
+                <button onClick={() => navigate(-1)} style={{ fontSize: 18, color: 'var(--ink)' }}>
+                  ✕
+                </button>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--gray500)', lineHeight: 1.4, letterSpacing: '-0.28px' }}>
+                산책 중 발견한 우리 동네 보행 장애물을 신고하면
+                <br />
+                다른 산책자와 이웃의 안전한 이동에 도움이 될 수 있어요.
+              </p>
+            </div>
+            <img
+              src="/assets/illust-camera.svg"
+              alt=""
+              style={{ height: 160, objectFit: 'contain', justifySelf: 'center' }}
+            />
             <button className="btn" onClick={startSession}>
-              확인했어요 🐾
+              확인했어요
+              <img src="/assets/logo-paw.svg" alt="" width={16} height={16} />
             </button>
           </div>
         </div>

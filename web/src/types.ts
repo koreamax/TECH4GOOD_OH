@@ -15,6 +15,7 @@ export interface SessionDetection {
   imageBlob: Blob | null;
   status: 'pending' | 'reported' | 'rejected';
   receiptNo?: string;
+  at: string; // 탐지 시각 ISO (산책 종료 화면 타임라인용)
 }
 
 export interface ComplaintDraft {
