@@ -17,11 +17,13 @@ const DOG_ICON = `<div style="position:relative;width:64px;height:78px;filter:dr
 </div>`;
 const START_ICON = `<img src="/assets/start-dot.svg" style="width:28px;height:28px;display:block"/>`;
 const WARN_ICON = `<div style="font-size:24px">⚠️</div>`;
-// 신고 완료 지점: 코랄 라벨 + X 마커 (시안 '신고 완료 후 표시')
+// 신고 완료 지점: 코랄 라벨 + X 마커 (방금 신고한 최근 1건에만 라벨 표시)
 const REPORTED_ICON = `<div style="position:relative;width:132px;height:48px;white-space:nowrap;font-family:Pretendard,sans-serif">
   <span style="position:absolute;left:0;top:0;width:132px;text-align:center;background:${CORAL};color:#fff;font-size:10px;font-weight:600;padding:3px 6px;border-radius:999px;box-shadow:0 2px 5px rgba(0,0,0,.16)">보행 장애물 신고 완료</span>
   <span style="position:absolute;left:54px;top:24px;width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid ${CORAL};color:${CORAL};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,.16)">✕</span>
 </div>`;
+// 누적 신고 지점: 라벨 없이 작은 X 점만 (지도 혼잡 방지)
+const REPORTED_DOT = `<div style="width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid ${CORAL};color:${CORAL};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,.16);font-family:Pretendard,sans-serif">✕</div>`;
 
 interface Props {
   route: RoutePoint[];
@@ -124,6 +126,7 @@ export default function WalkMapOverlay({ route, detections, existingMarkers = []
         .filter((d) => d.status === 'reported')
         .map((d) => `${d.lat.toFixed(4)}:${d.lng.toFixed(4)}`),
     );
+    // 누적 신고 지점(이전 산책)은 라벨 없이 작은 X 점으로만 표시해 혼잡을 없앤다.
     const historical = existingMarkers
       .filter((m) => !currentReportedKeys.has(`${m.lat.toFixed(4)}:${m.lng.toFixed(4)}`))
       .map(
@@ -131,27 +134,33 @@ export default function WalkMapOverlay({ route, detections, existingMarkers = []
           new n.Marker({
             position: new n.LatLng(m.lat, m.lng),
             map,
-            // 앵커(66,36)가 작은 X 원의 정중앙이므로 실제 좌표가 경로 위에 정확히 놓인다.
-            icon: { content: REPORTED_ICON, anchor: new n.Point(66, 36) },
+            icon: { content: REPORTED_DOT, anchor: new n.Point(12, 12) },
             zIndex: 40,
           }),
       );
+    // "보행 장애물 신고 완료" 라벨은 방금 신고한 가장 최근 1건에만 — 나머지는 X 점.
+    const reportedAts = detections.filter((d) => d.status === 'reported').map((d) => d.at);
+    const latestReportedAt = reportedAts.length ? reportedAts.reduce((a, b) => (a > b ? a : b)) : null;
     const current = detections
       .filter((dn) => dn.status !== 'rejected')
-      .map((dn) =>
-        dn.status === 'reported'
-          ? new n.Marker({
-              position: new n.LatLng(dn.lat, dn.lng),
-              map,
-              icon: { content: REPORTED_ICON, anchor: new n.Point(66, 36) },
-              zIndex: 50,
-            })
-          : new n.Marker({
-              position: new n.LatLng(dn.lat, dn.lng),
-              map,
-              icon: { content: WARN_ICON, anchor: new n.Point(12, 12) },
-          }),
-      );
+      .map((dn) => {
+        if (dn.status === 'reported') {
+          const isLatest = dn.at === latestReportedAt;
+          return new n.Marker({
+            position: new n.LatLng(dn.lat, dn.lng),
+            map,
+            icon: isLatest
+              ? { content: REPORTED_ICON, anchor: new n.Point(66, 36) }
+              : { content: REPORTED_DOT, anchor: new n.Point(12, 12) },
+            zIndex: isLatest ? 60 : 50,
+          });
+        }
+        return new n.Marker({
+          position: new n.LatLng(dn.lat, dn.lng),
+          map,
+          icon: { content: WARN_ICON, anchor: new n.Point(12, 12) },
+        });
+      });
     warnRef.current = [...historical, ...current];
   }, [mapState, route, detections, existingMarkers]);
 
