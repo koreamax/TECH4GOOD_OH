@@ -44,7 +44,9 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
   const [editAddress, setEditAddress] = useState('');
   const [editType, setEditType] = useState('');
 
-  // 열리는 즉시 문안을 미리 생성 → 확인-2 진입 시 대기 없이 표시
+  // 열리는 즉시 문안을 미리 생성 → 확인-2 진입 시 대기 없이 표시.
+  // 의존성은 detection 객체가 아니라 고유 식별자(at)로 둔다 — 같은 탐지의 상태 갱신
+  // (신고 완료 등)에는 리셋하지 않아야 완료(done) 화면이 확인 단계로 되돌아가지 않는다.
   useEffect(() => {
     if (!detection) return;
     setStep('verify');
@@ -71,7 +73,8 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
     })
       .then(setDraft)
       .catch(() => setDraft(fallback)); // 서버 불가 시에도 승인 플로우 무중단
-  }, [detection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detection?.at]); // 고유 식별자 기준 — 상태 갱신(신고 완료)에는 리셋 안 함
 
   if (!detection) return null;
 
