@@ -11,7 +11,8 @@ export interface SessionDetection {
   confidence: number;
   lat: number;
   lng: number;
-  imageUrl: string; // object URL (승인 화면 표시용)
+  imageUrl: string; // object URL (원본 캡처 — 서버 업로드·LLM 입력용)
+  annotatedUrl?: string; // 박스·마스크가 그려진 주석 프레임 (승인 화면 표시용)
   imageBlob: Blob | null;
   status: 'pending' | 'reported' | 'rejected';
   receiptNo?: string;
@@ -98,11 +99,13 @@ export interface VideoTimelineItem {
   class_name: string;
   confidence: number;
   box: { x1: number; y1: number; x2: number; y2: number };
+  mask?: number[][]; // 정규화 폴리곤 [[x, y], ...] (seg 모델일 때만)
 }
 
 export interface VideoInferResult {
   model: 'loaded' | 'absent';
   reason?: string;
   duration: number;
-  detections: VideoTimelineItem[];
+  detections: VideoTimelineItem[]; // 알람(피크) 타임라인
+  overlay?: VideoTimelineItem[]; // 실시간 오버레이용 밀집 타임라인
 }

@@ -75,6 +75,9 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
 
   if (!detection) return null;
 
+  // 승인 화면에는 박스·마스크가 그려진 주석 프레임을 우선 표시(있으면).
+  const displayUrl = detection.annotatedUrl ?? detection.imageUrl;
+
   const reject = () => {
     if (detection.serverId != null) {
       patchDetection(detection.serverId, 'rejected').catch(() => undefined);
@@ -194,9 +197,9 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               <br />
               확인 후 신고하면 안전신문고를 통해 우리 지역에 전달돼요.
             </p>
-            {detection.imageUrl && (
+            {displayUrl && (
               <img
-                src={detection.imageUrl}
+                src={displayUrl}
                 alt="탐지 캡처"
                 style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
               />
@@ -253,9 +256,9 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
               제출 전 마지막으로 보호자님의 검토가 필요해요.
             </p>
             <div style={{ position: 'relative' }}>
-              {detection.imageUrl && (
+              {displayUrl && (
                 <img
-                  src={detection.imageUrl}
+                  src={displayUrl}
                   alt="탐지 캡처"
                   style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8 }}
                 />
@@ -331,9 +334,9 @@ export default function DetectionModal({ detection, onResolved, onClose }: Props
                 ✕
               </button>
             </div>
-            {detection.imageUrl && (
+            {displayUrl && (
               <img
-                src={detection.imageUrl}
+                src={displayUrl}
                 alt="탐지 캡처"
                 style={{ width: 'calc(100% + 40px)', margin: '12px -20px 0', height: 200, objectFit: 'cover', display: 'block' }}
               />

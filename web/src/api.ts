@@ -37,6 +37,9 @@ export async function inferVideo(video: Blob, durationSec: number): Promise<Vide
   const form = new FormData();
   form.append('video', video, 'walk.mp4');
   form.append('duration', String(durationSec));
+  // 오버레이를 촘촘하게: 낮은 conf·높은 샘플링. 알람 게이트(0.6)는 프론트에서 별도 적용.
+  form.append('conf', '0.25');
+  form.append('sample_fps', '3');
   return json(await fetch(`${API_URL}/infer/video`, { method: 'POST', body: form }));
 }
 
