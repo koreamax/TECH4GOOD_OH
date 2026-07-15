@@ -4,7 +4,7 @@ import MapFallback from '../naver/MapFallback';
 import { useNaverMaps } from '../naver/useNaverMaps';
 import type { RoutePoint } from '../types';
 
-const PRIMARY = '#5fc98e';
+const PRIMARY = '#407fff'; // 시안 경로 Blue
 
 interface Props {
   route: RoutePoint[];
