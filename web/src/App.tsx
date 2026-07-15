@@ -1,6 +1,7 @@
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import TabBar from './components/TabBar';
+import CourseDetailPage from './pages/CourseDetailPage';
 import HomePage from './pages/HomePage';
 import MapPage from './pages/MapPage';
 import MyPage from './pages/MyPage';
@@ -11,9 +12,6 @@ import SummaryPage from './pages/SummaryPage';
 import WalkPage from './pages/WalkPage';
 
 export default function App() {
-  const { pathname } = useLocation();
-  const hideTabs = pathname.startsWith('/walk'); // 산책 종료(/summary)는 시안대로 탭바 노출
-
   return (
     <div className="frame">
       <Routes>
@@ -25,8 +23,9 @@ export default function App() {
         <Route path="/summary" element={<SummaryPage />} />
         <Route path="/records" element={<RecordsPage />} />
         <Route path="/records/:id" element={<RecordDetailPage />} />
+        <Route path="/courses/:courseId" element={<CourseDetailPage />} />
       </Routes>
-      {!hideTabs && <TabBar />}
+      <TabBar />
     </div>
   );
 }

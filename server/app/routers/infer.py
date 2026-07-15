@@ -88,22 +88,42 @@ def _mock_timeline(seed: bytes, duration: float) -> list[dict]:
     i = 0
     while t < max(dur - 1.0, _MOCK_FIRST_T + 0.1):
         r = (h >> (i * 5)) & 0x1F  # 0~31 의사난수
-        class_name = _DAMAGED[0] if r % 10 < 7 else _DAMAGED[1]
-        if r % 10 < 8:
+        class_name = _DAMAGED[0] if i == 0 or r % 10 < 7 else _DAMAGED[1]
+        if i == 0:
+            # 제공된 4초 프레임의 데모 결과와 동일한 첫 탐지값.
+            confidence = 0.78
+        elif r % 10 < 8:
             confidence = round(0.62 + (r % 32) / 31 * 0.31, 2)  # 0.62~0.93
         else:
             confidence = round(0.40 + (r % 20) / 19 * 0.19, 2)  # 0.40~0.59
-        # 화면 중앙 하단 근처의 그럴듯한 박스(0~1 정규화)
-        cx = 0.35 + (r % 7) / 20
-        cy = 0.55 + (r % 5) / 25
-        out.append(
-            {
+        if i == 0:
+            item = {
+                "t": round(t, 2),
+                "class_name": class_name,
+                "confidence": confidence,
+                "box": {"x1": 0.264, "y1": 0.295, "x2": 0.882, "y2": 0.527},
+                # 4초 프레임의 파손 영역을 따라가는 데모 세그멘테이션 폴리곤.
+                "mask": [
+                    [0.293, 0.308], [0.342, 0.309], [0.392, 0.325],
+                    [0.507, 0.353], [0.600, 0.364], [0.696, 0.373],
+                    [0.808, 0.380], [0.860, 0.405], [0.870, 0.465],
+                    [0.830, 0.480], [0.740, 0.488], [0.650, 0.485],
+                    [0.570, 0.478], [0.485, 0.470], [0.400, 0.459],
+                    [0.336, 0.446], [0.280, 0.430], [0.267, 0.395],
+                    [0.272, 0.352],
+                ],
+            }
+        else:
+            # 이후 탐지는 다른 산책 위치에서 반복 확인할 수 있도록 이동된 박스 사용.
+            cx = 0.35 + (r % 7) / 20
+            cy = 0.55 + (r % 5) / 25
+            item = {
                 "t": round(t, 2),
                 "class_name": class_name,
                 "confidence": confidence,
                 "box": {"x1": cx - 0.12, "y1": cy - 0.1, "x2": cx + 0.12, "y2": cy + 0.1},
             }
-        )
+        out.append(item)
         t += _MOCK_GAP + (r % 6)  # 7~12초 간격
         i += 1
     return out
