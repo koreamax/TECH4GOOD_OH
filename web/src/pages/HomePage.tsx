@@ -167,7 +167,7 @@ export default function HomePage() {
       </div>
 
       {/* Card List — gap 14, padding 20 */}
-      <div style={{ display: 'grid', gap: 14, padding: 20, paddingBottom: 120 }}>
+      <div style={{ display: 'grid', gap: 14, padding: 20, paddingBottom: 170 }}>
         {tab === 0 &&
           (walks.length > 0
             ? walks.map((walk, i) => (
@@ -205,14 +205,15 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* CTA — 그라데이션 컨테이너 + 그린 버튼 + 발바닥 로고 (시안 원본) */}
+      {/* CTA — 그라데이션 컨테이너 + 그린 버튼 + 발바닥 로고 (시안 원본).
+          탭바 뒤까지 흰 배경으로 이어져 아래 틈이 없다 */}
       <div
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
-          bottom: 64,
-          padding: '30px 20px 20px',
+          bottom: 0,
+          padding: '30px 20px 78px',
           background: 'linear-gradient(to bottom, rgba(255,255,255,0) 6%, #fff 32%)',
           zIndex: 40,
         }}
