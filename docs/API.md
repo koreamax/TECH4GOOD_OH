@@ -216,5 +216,5 @@ GEMINI_API_KEY 미설정·호출 실패 시 템플릿 문안으로 폴백(플로
 ## 8. 기타
 
 - `GET /health` — `{"status":"ok"}` (시연망 점검용)
-- `GET /geocode/reverse?lat=&lng=` — 주소 문자열. Kakao 키 미설정 시 좌표 문자열 폴백.
+- `GET /geocode/reverse?lat=&lng=` — 주소 문자열. Naver(NCP) 키 미설정 시 좌표 문자열 폴백.
 - `GET /media/...` — 업로드 이미지 정적 서빙
