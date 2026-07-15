@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "PawPatrol",
+    "slug": "pawpatrol",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "ios": {
+      "bundleIdentifier": "com.pawpatrol.network",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "산책 중 보행 위험 요소를 탐지하기 위해 카메라를 사용합니다.",
+        "NSLocationWhenInUseUsageDescription": "산책 경로 기록과 신고 위치 표기를 위해 위치를 사용합니다.",
+        "NSPhotoLibraryUsageDescription": "산책 기록에 강아지 사진을 첨부하기 위해 앨범에 접근합니다."
+      }
+    },
+    "android": {
+      "package": "com.pawpatrol.network",
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "VIBRATE"],
+      "config": {
+        "googleMaps": {
+          "apiKey": "ANDROID_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      }
+    },
+    "plugins": [
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "산책 중 보행 위험 요소를 탐지하기 위해 카메라를 사용합니다."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "산책 경로 기록과 신고 위치 표기를 위해 위치를 사용합니다."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "산책 기록에 강아지 사진을 첨부하기 위해 앨범에 접근합니다."
+        }
+      ]
+    ]
+  }
+}
